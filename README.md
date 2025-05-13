@@ -4,7 +4,7 @@
 - **License**: [Pending final approval]  
 
 <p align="center">
-  <img src="https://github.com/dondongwon/website/blob/master/images/dong/SHREC.png?raw=true" width="300"/>
+  <img src="https://github.com/dondongwon/website/blob/master/images/dong/SHREC_empty.png?raw=true" width="300"/>
 </p>
 
 
