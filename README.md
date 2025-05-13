@@ -59,9 +59,37 @@ Change repo_id accordingly for different subsets:
 
 ## 🧪 Running SHREC Benchmark Experiments
 
-You can evaluate **LLMs and VLMs** on SHREC tasks by following these steps:
+### 🔑 Environment Setup
+
+Before running experiments, install all necessary dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+
+If you'd like to use OpenAI or Google Gemini models, ensure these environment variables are set in your shell:
+```bash
+export OPENAI_API_KEY="your-openai-key"
+export GOOGLE_GENAI_API_KEY="your-google-api-key"
+```
+
+
+We use [VLMEvalKit](https://github.com/open-compass/VLMEvalKit) to test a wide suite of vision-language models (VLMs).
+
+To install it:
+```bash
+git clone https://github.com/open-compass/VLMEvalKit.git
+cd VLMEvalKit
+pip install -e .
+```
+
+More details and configuration options can be found in their [Quickstart guide](https://github.com/open-compass/VLMEvalKit/blob/main/docs/en/Quickstart.md).
 
 ---
+
+Then, you can evaluate **LLMs and VLMs** on SHREC tasks by following these steps:
+
+
 
 ### 🔧 Step 1: Preprocess the Dataset
 
