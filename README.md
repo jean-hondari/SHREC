@@ -32,6 +32,10 @@ It supports research in rapport-building, mental health intervention, and social
 
 To load this dataset into a pandas df: 
 
+
+### For Wellness Home 
+
+Change repo_id accordingly from: {"MIT-personal-robots/shrec_wellness_home", "MIT-personal-robots/shrec_wellness_dorm", "MIT-personal-robots/shrec_wellness_empathic"}
 <pre>
 import pandas as pd
 from datasets import load_dataset
