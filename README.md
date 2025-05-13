@@ -182,7 +182,7 @@ Each interaction sample includes:
 
 
 <p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/tasks_fig.png?raw=true" width="600"/>
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/tasks_fig.png?raw=true" width="1000"/>
 </p>
 
 
