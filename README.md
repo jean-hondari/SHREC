@@ -1,15 +1,11 @@
 # Social Human Robot Embodied Conversation (SHREC) Dataset
-
-
+- **Authors**: Dong Won Lee, Yubin Kim, Sooyeon Jeong, Denison Guvenoz, Parker Malachowsky, Louis-Philippe Morency, Cynthia Breazeal, Hae Won Park  
+- **Institutions**: MIT, Purdue University, Carnegie Mellon University  
+- **License**: [Pending final approval]  
 
 <p align="center">
   <img src="https://github.com/dondongwon/website/blob/master/images/dong/SHREC.png?raw=true" width="300"/>
 </p>
-
-
-- **Authors**: Dong Won Lee, Yubin Kim, Sooyeon Jeong, Denison Guvenoz, Parker Malachowsky, Louis-Philippe Morency, Cynthia Breazeal, Hae Won Park  
-- **Institutions**: MIT, Purdue University, Carnegie Mellon University  
-- **License**: [Pending final approval]  
 
 
 ## 🧠 SHREC Dataset Summary
