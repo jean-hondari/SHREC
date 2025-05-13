@@ -1,11 +1,13 @@
 # Social Human Robot Embodied Conversation (SHREC) Dataset
+<p align="center">
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/SHREC_empty.png?raw=true" width="300"/>
+</p>
+
 - **Authors**: Dong Won Lee, Yubin Kim, Sooyeon Jeong, Denison Guvenoz, Parker Malachowsky, Louis-Philippe Morency, Cynthia Breazeal, Hae Won Park  
 - **Institutions**: MIT, Purdue University, Carnegie Mellon University  
 - **License**: [Pending final approval]  
 
-<p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/SHREC_empty.png?raw=true" width="300"/>
-</p>
+
 
 ## 🧠 SHREC Dataset Summary
 In full, the Social Human Robot Embodied Conversation (SHREC) Dataset is the first large-scale, real-world benchmark designed to evaluate **social reasoning** in **language** and **vision-language models** through physically embodied human-robot interactions (HRI). It contains:
