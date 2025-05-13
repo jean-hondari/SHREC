@@ -57,10 +57,9 @@ Change repo_id accordingly for different subsets:
  - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_dorm",
  - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_empathic"
 
-
 ## 🧪 Running SHREC Benchmark Experiments
 
-You can evaluate **LLMs and VLMs** on SHREC tasks by following these two steps:
+You can evaluate **LLMs and VLMs** on SHREC tasks by following these steps:
 
 ---
 
@@ -106,6 +105,25 @@ python main_vlm_exp.py \
 
 ---
 
+### 📊 Step 3: Evaluate Model Performance
+
+After running inference, evaluate model predictions using the following steps:
+
+**(a) Parse Model Outputs:**
+```bash
+python eval_pydantic.py
+```
+- This extracts predicted answer choices from LLM output files located in `./output/`.
+- Outputs are saved into `./output_pydantic/`.
+
+**(b) Compute Accuracy Metrics:**
+```bash
+python eval.py
+```
+- This script computes task-specific performance metrics across all models.
+
+---
+
 ### 🧠 Supported Models
 
 Below are the models currently supported in the SHREC benchmark pipeline:
@@ -118,7 +136,6 @@ Below are the models currently supported in the SHREC benchmark pipeline:
 | Others            | `o1`, `o1-mini`, `llava_video_next`, `llava_video_next_7b_dpo`, `DeepSeek-R1-Distill-Qwen-32B` |
 
 Each model is loaded via a unified interface. For GPT models and Gemini, `utils_gpt.py` provides consistent handling of prompt strategies (`zero-shot`, `few-shot`, `cot`, etc.).
-
 
 ## 📦 Dataset Structure
 
