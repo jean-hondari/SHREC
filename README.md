@@ -150,32 +150,23 @@ Each interaction sample includes:
 - `correction`: Suggested repair if the segment is an error
 
 
-## 🧪 Benchmark Tasks
+### 🧪 SHREC Task Overview
 
-The HSRI benchmark includes **8 tasks** spanning four core dimensions of social reasoning in human-robot interaction.
+#### 1. Detecting Social Behavior
 
-<p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/tasks_fig.png?raw=true" width="600"/>
-</p>
+| Task                                  | Description                                                              | `task_type` argument     |
+|---------------------------------------|--------------------------------------------------------------------------|---------------------------|
+| **Error / Competence / None Detection** | Classify the robot’s behavior as a social error, competence, or neither. | `detection`               |
+| **Error Detection**                   | Determine whether a given behavior constitutes a social error.           | `detection_error_only`    |
 
-### 1. Detecting Social Behavior
+#### 2. Identifying Social Attributes
 
-| Task                             | Description                                                              |
-|----------------------------------|--------------------------------------------------------------------------|
-| **Error / Competence / None Detection** | Classify the robot’s behavior as a social error, competence, or neither. |
-| **Error Detection**              | Determine whether a given behavior constitutes a social error.           |
+| Task                             | Description                                                                 | `task_type` argument             |
+|----------------------------------|-----------------------------------------------------------------------------|----------------------------------|
+| **Social Attribute Identification** | Identify which of the seven social attributes are relevant to a given behavior. | `attribute`                 |
+| **Multiple Attribute Detection** | Determine whether multiple social attributes are present in the behavior.   | `attribute_agreed_multiple_subj` |
 
-
-
-### 2. Identifying Social Attributes
-
-| Task                             | Description                                                                 |
-|----------------------------------|-----------------------------------------------------------------------------|
-| **Social Attribute Identification** | Identify which of the seven social attributes are relevant to a given behavior. |
-| **Multiple Attribute Detection** | Determine whether multiple social attributes are present in the behavior.   |
-
-#### 7 Social Attributes
-
+**Seven Social Attributes**:
 - **Emotions** – Identifying and responding to emotional expressions  
 - **Engagement** – Monitoring user interest and presence  
 - **Conversational Mechanics** – Managing turn-taking, timing, and pauses  
@@ -184,28 +175,23 @@ The HSRI benchmark includes **8 tasks** spanning four core dimensions of social 
 - **Social Context & Relationships** – Acting appropriately based on context and social role  
 - **Social Norms & Routines** – Following culturally appropriate social conventions  
 
+#### 3. Understanding Interaction Flow
 
+| Task                    | Description                                                                          | `task_type` argument |
+|-------------------------|--------------------------------------------------------------------------------------|----------------------|
+| **Pre-Condition Reasoning**  | Given the robot’s utterance, choose the plausible user behavior that came before.     | `pre`                |
+| **Post-Condition Reasoning** | Given the user’s utterance, select the robot’s likely follow-up behavior.              | `post`               |
 
-### 3. Understanding Interaction Flow
+These tasks are structured as **multiple-choice questions**, with distractors sampled from real robot-user interactions.
 
-| Task                    | Description                                                                          |
-|-------------------------|--------------------------------------------------------------------------------------|
-| **Pre-Condition Reasoning**  | Given the robot’s utterance, choose the plausible user behavior that came before.     |
-| **Post-Condition Reasoning** | Given the user’s utterance, select the robot’s likely follow-up behavior.              |
+#### 4. Rationalizing & Correcting Social Errors
 
-These tasks are structured as **multiple-choice questions**, with distractors sampled from other real-world robot-user interactions to ensure contextual relevance.
+| Task                      | Description                                                                          | `task_type` argument |
+|---------------------------|--------------------------------------------------------------------------------------|----------------------|
+| **Rationale Selection**   | Choose the correct explanation for why the robot’s behavior was an error.            | `rationale`          |
+| **Correction Suggestion** | Select the most appropriate corrective action the robot should have taken instead.   | `correction`         |
 
-
-
-### 4. Rationalizing & Correcting Social Errors
-
-| Task                | Description                                                                          |
-|---------------------|--------------------------------------------------------------------------------------|
-| **Rationale Selection** | Choose the correct explanation for why the robot’s behavior was an error.            |
-| **Correction Suggestion** | Select the most appropriate corrective action the robot should have taken instead. |
-
-These tasks test a model's **diagnostic** (understanding what went wrong) and **prescriptive** (knowing how to fix it) social reasoning abilities.
-
+These tasks evaluate both **diagnostic** (understanding what went wrong) and **prescriptive** (knowing how to fix it) reasoning abilities.
 
 ## 🔍 Example Sample
 
