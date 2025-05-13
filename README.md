@@ -58,6 +58,67 @@ Change repo_id accordingly for different subsets:
  - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_empathic"
 
 
+## 🧪 Running SHREC Benchmark Experiments
+
+You can evaluate **LLMs and VLMs** on SHREC tasks by following these two steps:
+
+---
+
+### 🔧 Step 1: Preprocess the Dataset
+
+Run the following script to extract task-specific data from the raw HuggingFace dataset (in `.csv` format). This will create `.pickle` files under `./output_datasets` for each supported task.
+
+```bash
+python main_vlm_get_data.py --data_path ../shrec_empathic.csv --data_name shrec_empathic --task_type pre
+```
+
+**Arguments**:
+- `--data_path`: Path to the HuggingFace-downloaded CSV file.
+- `--data_name`: Dataset identifier (e.g., `shrec_empathic`, `shrec_wellness_home`, etc.)
+- `--task_type`: Task to extract. Options:
+  - `detection`, `attribute`, `rationale`, `correction`
+  - `post`, `pre`
+  - `attribute_agreed_multiple_subj`, `detection_error_only`
+
+---
+
+### 🚀 Step 2: Run the Model Evaluation
+
+After preprocessing, run the benchmark with the following command:
+
+```bash
+python main_vlm_exp.py \
+  --context_window 15 \
+  --model GPT4o_MINI_Image \
+  --data_path ./output_datasets \
+  --task_type shrec_empathic_pre.pickle \
+  --video \
+  --csv_path ../shrec_empathic.csv \
+  --images_dir ../shrec_empathic
+```
+
+**Key Flags**:
+- `--context_window`: Number of utterances for context (e.g., 15).
+- `--model`: Model to evaluate (see list below).
+- `--task_type`: Preprocessed `.pickle` file generated in Step 1.
+- `--video`: Include frame-based input (set this for vision-language models).
+- `--images_dir`: Directory with extracted image frames for each interaction.
+
+---
+
+### 🧠 Supported Models
+
+Below are the models currently supported in the SHREC benchmark pipeline:
+
+| Category          | Model Identifier                                                                 |
+|------------------|-----------------------------------------------------------------------------------|
+| Open-source VLMs | `paligemma-3b-mix-448`, `llava_next_llama3`, `llava_video_qwen2_7b`, `InternVL2-8B`, `MiniCPM-V-2_6`, `Llama-3.2-3B`, `Llama-3.2-3B-Instruct`, `Llama-3.2-11B-Vision-Instruct` |
+| GPT-4o Variants   | `GPT4o_Image`, `GPT4o_MINI_Image`, `GPT4o_Lang`, `GPT4o_MINI_Lang`, `GPT4o_Image_few_shot`, `GPT4o_Image_cot` |
+| Google Gemini     | `gemini-1.5-flash`, `gemini-2.0-flash-exp`, `gemini-1.5-pro`, `gemini-1.5-flash-8b` |
+| Others            | `o1`, `o1-mini`, `llava_video_next`, `llava_video_next_7b_dpo`, `DeepSeek-R1-Distill-Qwen-32B` |
+
+Each model is loaded via a unified interface. For GPT models and Gemini, `utils_gpt.py` provides consistent handling of prompt strategies (`zero-shot`, `few-shot`, `cot`, etc.).
+
 
 ## 📦 Dataset Structure
 
