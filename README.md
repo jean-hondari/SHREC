@@ -1,5 +1,4 @@
-# Social Human Robot Embodied Conversation (SHREC) Dataset - Wellness Home Subset
-
+# Social Human Robot Embodied Conversation (SHREC) Dataset
 
 
 
