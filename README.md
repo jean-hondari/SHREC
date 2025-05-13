@@ -30,12 +30,10 @@ It supports research in rapport-building, mental health intervention, and social
 
 ## 💾 Download Dataset from HuggingFace
 
-To load this dataset into a pandas df: 
+To downloadload this dataset from huggingface, then load into a pandas df: 
 
 
 ### For Wellness Home 
-
-Change repo_id accordingly from: {"MIT-personal-robots/shrec_wellness_home", "MIT-personal-robots/shrec_wellness_dorm", "MIT-personal-robots/shrec_wellness_empathic"}
 <pre>
 import pandas as pd
 from datasets import load_dataset
@@ -53,6 +51,11 @@ parquet_files = glob.glob("downloaded_repo/**/*.parquet", recursive=True)
 df = pd.concat([pd.read_parquet(f) for f in parquet_files], ignore_index=True)
 
 </pre>
+
+Change repo_id accordingly for different subsets: 
+ - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_home"
+ - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_dorm",
+ - **HF Repo ID:** "MIT-personal-robots/shrec_wellness_empathic"
 
 
 
