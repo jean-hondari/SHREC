@@ -70,7 +70,7 @@ Each interaction sample includes:
 The HSRI benchmark includes **8 tasks** spanning four core dimensions of social reasoning in human-robot interaction.
 
 <p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/task_figs_mar.pdf" width="600"/>
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/tasks_fig.png?raw=true" width="600"/>
 </p>
 
 ### 1. Detecting Social Behavior
