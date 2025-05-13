@@ -17,7 +17,7 @@ In full, the Social Human Robot Embodied Conversation (SHREC) Dataset is the fir
 - Coverage of **seven social attributes** critical for social intelligence
 
 <p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/first_fig_fin.png?raw=true" width="300"/>
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/first_fig_fin.png?raw=true" width="400"/>
 </p>
 
 
