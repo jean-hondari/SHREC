@@ -16,6 +16,11 @@ In full, the Social Human Robot Embodied Conversation (SHREC) Dataset is the fir
 - Labels for **social errors**, **competencies**, **rationales**, and **corrections**
 - Coverage of **seven social attributes** critical for social intelligence
 
+<p align="center">
+  <img src="https://github.com/dondongwon/website/blob/master/images/dong/first_fig_fin.png?raw=true" width="300"/>
+</p>
+
+
 The dataset is split into 3 subsets:
 - The **SHREC Wellness Home** subset contains real-world, longitudinal from [Jeong et al. (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11094612/) recordings from an 8-week in-home study with adult participants aged 18–83. Participants engaged with a **socially assistive robot** designed to improve psychological well-being, affect, and readiness for change through evidence-based positive psychology interventions (PPIs).
 - The **SHREC Wellness Dorm** subset contains longitudinal, **real-world human-robot interaction video data** data from [Jeong et al. (2020)](https://ieeexplore.ieee.org/document/9206085), where a **robotic positive psychology coach** was deployed in **MIT student dormitories**. Participants engaged in daily wellbeing sessions with the robot over the course of 1–4 weeks.
