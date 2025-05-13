@@ -1,6 +1,6 @@
 # Social Human Robot Embodied Conversation (SHREC) Dataset
 <p align="center">
-  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/SHREC_empty.png?raw=true" width="300"/>
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/shrec_side.png?raw=true" width="300"/>
 </p>
 
 - **Authors**: Dong Won Lee, Yubin Kim, Sooyeon Jeong, Denison Guvenoz, Parker Malachowsky, Louis-Philippe Morency, Cynthia Breazeal, Hae Won Park  
