@@ -22,9 +22,9 @@ In full, the Social Human Robot Embodied Conversation (SHREC) Dataset is the fir
 
 
 The dataset is split into 3 subsets:
-- The **SHREC Wellness Home** subset contains real-world, longitudinal from [Jeong et al. (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11094612/) recordings from an 8-week in-home study with adult participants aged 18–83. Participants engaged with a **socially assistive robot** designed to improve psychological well-being, affect, and readiness for change through evidence-based positive psychology interventions (PPIs).
-- The **SHREC Wellness Dorm** subset contains longitudinal, **real-world human-robot interaction video data** data from [Jeong et al. (2020)](https://ieeexplore.ieee.org/document/9206085), where a **robotic positive psychology coach** was deployed in **MIT student dormitories**. Participants engaged in daily wellbeing sessions with the robot over the course of 1–4 weeks.
-- The **SHREC Empathic** subset contains **real-world human-robot interaction video data** from [Shen et al. (2024)](https://aclanthology.org/2024.findings-acl.268.pdf), collected over a month-long deployment of social robots in participants’ homes, as participants engage in natural, empathic storytelling interactions with AI agents. 
+- The **SHREC Wellness Home** subset contains real-world human-robot interaction video data, longitudinal from [Jeong et al. (2023)](https://pmc.ncbi.nlm.nih.gov/articles/PMC11094612/) recordings from an 8-week in-home study with adult participants aged 18–83. Participants engaged with a **socially assistive robot designed to improve psychological well-being**, affect, and readiness for change through evidence-based positive psychology interventions (PPIs).
+- The **SHREC Wellness Dorm** subset contains longitudinal, real-world human-robot interaction video data data from [Jeong et al. (2020)](https://ieeexplore.ieee.org/document/9206085), where a **robotic positive psychology coach** was deployed in **MIT student dormitories**. Participants engaged in daily wellbeing sessions with the robot over the course of 1–4 weeks.
+- The **SHREC Empathic** subset contains real-world human-robot interaction video data from [Shen et al. (2024)](https://aclanthology.org/2024.findings-acl.268.pdf), collected over a month-long deployment of social robots in participants’ homes, as participants engage in natural, **empathic storytelling interactions with a social robot**. 
 
 It supports research in rapport-building, mental health intervention, and social reasoning in intimate, longitudinal HRI settings.
 
