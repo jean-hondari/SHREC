@@ -180,6 +180,15 @@ Each interaction sample includes:
 
 ### 🧪 SHREC Task Overview
 
+
+<p align="center">
+  <img src="https://github.com/mitmedialab/SHREC/blob/main/images/tasks_fig.png?raw=true" width="600"/>
+</p>
+
+
+
+
+
 #### 1. Detecting Social Behavior
 
 | Task                                  | Description                                                              | `task_type` argument     |
