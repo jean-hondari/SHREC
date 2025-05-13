@@ -10,7 +10,7 @@
 
 
 ## 🧠 SHREC Dataset Summary
-In full, the Social Human Robot Embodied Conversation (SHREC) Dataset is the first large-scale, real-world benchmark designed to evaluate **social reasoning** in **language** and **vision-language models** through physically embodied human-robot interactions (HRI). It contains:
+The Social Human Robot Embodied Conversation (SHREC) Dataset is a unique, one-of-a-kind large-scale, real-world benchmark designed to evaluate **social reasoning** in **language** and **vision-language models** through physically embodied human-robot interactions (HRI). It contains:
 
 - **~400 real-world interaction videos**
 - **~10,000+ trained human annotations**
