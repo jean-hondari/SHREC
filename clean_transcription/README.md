@@ -279,3 +279,45 @@ python speaker_diarization.py \
 # Step 3
 python print_diarization_change.py diarized_output
 ```
+
+## Reprocess Multiple Annotation CSV Files
+
+If you have multiple annotation CSV files to reprocess, you can use:
+
+```bash
+bash script/reprocess_csv.sh
+```
+
+In `script/reprocess_csv.sh`, set the list of annotation files here:
+
+```bash
+BASE_WORK_DIR="reprocess_runs"
+
+ANNOTATION_FILES=(
+  "annotations1.csv"
+  "annotations2.csv"
+  "annotations3.csv"
+)
+```
+
+The script will:
+
+1. iterate through each CSV in `ANNOTATION_FILES`
+2. create a separate working directory under `reprocess_runs/`
+3. run:
+   - `parse_transcript.py`
+   - `speaker_diarization.py`
+   - `print_diarization_change.py --timestamped-transcript`
+4. save a new CSV for each input file with a `new transcript` column
+
+For example:
+
+- `annotations1.csv` → `annotations1.reprocessed.csv`
+- `annotations2.csv` → `annotations2.reprocessed.csv`
+
+Each CSV gets its own intermediate folder, such as:
+
+```text
+reprocess_runs/annotations1/
+reprocess_runs/annotations2/
+```

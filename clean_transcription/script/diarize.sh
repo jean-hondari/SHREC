@@ -1,7 +1,7 @@
 export OPENAI_API_KEY="$(cat /mnt/ssd1/SHREC/openai_token)"
 
-input_path="/mnt/ssd1/SHREC/SHREC/clean_transcription/parsed/example_transcript_dorm.json"
-model="gpt-5.4"
+input_path="/mnt/ssd1/SHREC/SHREC/clean_transcription/parsed/example_transcript_empathic.json"
+model="gpt-5.5"
 output_folder="output_example_$model"
 
 
