@@ -24,6 +24,11 @@ def get_modified_label(sentence: Dict[str, Any]) -> str:
     return str(sentence.get("modified_speaker_label", "")).strip()
 
 
+def get_current_label(sentence: Dict[str, Any]) -> str:
+    modified = get_modified_label(sentence)
+    return modified if modified else get_original_label(sentence)
+
+
 def get_changed_sentence_ids(sentences: List[Dict[str, Any]]) -> List[int]:
     changed_ids = []
 
@@ -32,24 +37,32 @@ def get_changed_sentence_ids(sentences: List[Dict[str, Any]]) -> List[int]:
         modified = get_modified_label(sentence)
 
         if modified and original != modified:
-            print("note")
             changed_ids.append(i)
 
     return changed_ids
 
 
-def format_sentence(sentence: Dict[str, Any], changed: bool) -> str:
+def format_sentence(sentence: Dict[str, Any], changed: bool, current_only: bool = False) -> str:
     sid = sentence.get("sentence_id", "N/A")
     original = get_original_label(sentence)
     modified = get_modified_label(sentence)
+    current = get_current_label(sentence)
     text = sentence.get("text", "")
 
     marker = " (*changed)" if changed else ""
 
+    if current_only:
+        return f"[{sid}] {current}{marker}: {text}"
+
     return f"[{sid}] {original} -> {modified}{marker}: {text}"
 
 
-def print_changed_windows(sentences: List[Dict[str, Any]], changed_indices: List[int], context: int) -> None:
+def print_changed_windows(
+    sentences: List[Dict[str, Any]],
+    changed_indices: List[int],
+    context: int,
+    current_only: bool = False,
+) -> None:
     changed_set = set(changed_indices)
 
     for idx in changed_indices:
@@ -61,10 +74,54 @@ def print_changed_windows(sentences: List[Dict[str, Any]], changed_indices: List
         print("-" * 100)
 
         for j in range(start, end):
-            print(format_sentence(sentences[j], j in changed_set))
+            print(format_sentence(sentences[j], j in changed_set, current_only))
 
         print()
 
+
+def print_transcript(sentences: List[Dict[str, Any]], current_only: bool = True) -> None:
+    last_label = None
+
+    for sentence in sentences:
+        label = get_current_label(sentence) if current_only else get_original_label(sentence)
+        text = sentence.get("text", "")
+
+        if label != last_label:
+            print()
+            print(f"{label}:")
+            last_label = label
+
+        print(text)
+
+def format_word_with_timestamp(word: Dict[str, Any]) -> str:
+    timestamp = word.get("timestamp", "N/A")
+    text = word.get("word", "")
+    return f"({timestamp}) {text}"
+
+
+def print_timestamped_transcript(sentences: List[Dict[str, Any]]) -> None:
+    last_label = None
+    current_words = []
+
+    def flush_block():
+        if current_words:
+            print(" ".join(current_words))
+            print()
+
+    for sentence in sentences:
+        label = get_modified_label(sentence) or get_original_label(sentence)
+        words = sentence.get("words", [])
+
+        if label != last_label:
+            flush_block()
+            print(f"{label}:")
+            last_label = label
+            current_words.clear()
+
+        for word in words:
+            current_words.append(format_word_with_timestamp(word))
+
+    flush_block()
 
 def collect_json_files(path: Path) -> List[Path]:
     if path.is_file():
@@ -78,17 +135,29 @@ def collect_json_files(path: Path) -> List[Path]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Print sentences where speaker_labels and modified_speaker_label do not match."
+        description="Print speaker-label changes or full transcript."
     )
-    parser.add_argument(
-        "input",
-        help="Input JSON file or directory.",
-    )
+    parser.add_argument("input", help="Input JSON file or directory.")
     parser.add_argument(
         "--context",
         type=int,
         default=2,
         help="Number of sentences before and after each changed sentence.",
+    )
+    parser.add_argument(
+        "--current-only",
+        action="store_true",
+        help="Print only the current speaker label instead of original -> modified.",
+    )
+    parser.add_argument(
+        "--transcript",
+        action="store_true",
+        help="Print the whole transcript with speaker labels only when speaker changes.",
+    )
+    parser.add_argument(
+        "--timestamped-transcript",
+        action="store_true",
+        help="Print full transcript using modified speaker labels and word-level timestamps.",
     )
 
     args = parser.parse_args()
@@ -102,25 +171,35 @@ def main() -> None:
         data = load_json(file_path)
         sentences = data.get("sentences", [])
 
-        changed_indices = get_changed_sentence_ids(sentences)
-
         print("\n" + "#" * 100)
         print(f"FILE: {file_path}")
         print("#" * 100)
 
-        print_changed_windows(sentences, changed_indices, args.context)
+        if args.timestamped_transcript:
+            print_timestamped_transcript(sentences)
+        elif args.transcript:
+            print_transcript(sentences, current_only=True)
+        else:
+            changed_indices = get_changed_sentence_ids(sentences)
+            print_changed_windows(
+                sentences,
+                changed_indices,
+                args.context,
+                current_only=args.current_only,
+            )
+            print(f"File summary: {len(changed_indices)} / {len(sentences)} sentences changed")
 
-        print(f"File summary: {len(changed_indices)} / {len(sentences)} sentences changed")
+            total_changed += len(changed_indices)
 
-        total_changed += len(changed_indices)
         total_sentences += len(sentences)
 
-    print("\n" + "=" * 100)
-    print("OVERALL SUMMARY")
-    print("=" * 100)
-    print(f"Total files: {len(files)}")
-    print(f"Total sentences: {total_sentences}")
-    print(f"Total changed sentences: {total_changed}")
+    if not args.transcript:
+        print("\n" + "=" * 100)
+        print("OVERALL SUMMARY")
+        print("=" * 100)
+        print(f"Total files: {len(files)}")
+        print(f"Total sentences: {total_sentences}")
+        print(f"Total changed sentences: {total_changed}")
 
 
 if __name__ == "__main__":
