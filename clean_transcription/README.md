@@ -207,7 +207,6 @@ conversation_001.pre_post_windowed_context.json
 ```
 
 ---
-
 # 3. Summarize Speaker Label Changes
 
 ## File
@@ -218,20 +217,28 @@ print_diarization_change.py
 
 ## Purpose
 
-Prints sentences where:
+Utility script for inspecting diarization updates and printing transcripts.
 
-```text
-original speaker label != modified speaker label
-```
+Features:
 
-Also prints surrounding context sentences.
+- Print sentences where:
 
----
+  ```text
+  original speaker label != modified speaker label
+  ```
 
-## Run
+- Print surrounding context sentences
+- Print using only current/final speaker labels
+- Print full transcript grouped by speaker
+- Print timestamped word-level transcripts using modified speaker labels
+
+## Examples
 
 ```bash
-python print_diarization_change.py diarized_output
+python print_diarization_change.py sample.json
+python print_diarization_change.py sample.json --current-only
+python print_diarization_change.py sample.json --transcript
+python print_diarization_change.py sample.json --timestamped-transcript
 ```
 
 ---
