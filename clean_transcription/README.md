@@ -1,8 +1,17 @@
 # Clean Transcription + Speaker Diarization
 
-Deterministic transcript parsing and LLM-assisted speaker diarization correction for SHREC conversational transcripts.
+This folder contains the transcript cleaning pipeline for SHREC conversational transcripts.
+
+Its purpose is to:
+
+- parse timestamped transcript text into structured JSON
+- preserve the original words, timestamps, and transcript text
+- use an LLM only to correct speaker labels
+- print the corrected transcript in human-readable form
+- optionally reprocess annotation CSV files and save a new transcript column
 
 The pipeline preserves:
+
 - original words
 - original timestamps
 - original transcript text
@@ -22,15 +31,50 @@ clean_transcription/
 ├── parse_transcript.py
 ├── speaker_diarization.py
 ├── print_diarization_change.py
+├── reprocess_transcript_csv.py
 ├── script/
 │   ├── parse.sh
 │   ├── diarize.sh
-│   └── summarize_diarazation_change.sh
+│   ├── summarize_diarazation_change.sh
+│   └── reprocess_csv.sh
 ```
+
+## Main Files
+
+### `parse_transcript.py`
+Parses raw transcript text into structured JSON with:
+
+- word-level entries
+- sentence-level chunks
+- immutable timestamps
+- original speaker labels
+
+No LLM is used in this step.
+
+### `speaker_diarization.py`
+Runs speaker relabeling on parsed transcript JSON.
+
+It:
+
+- uses OpenAI to predict corrected speaker labels
+- does not rewrite transcript text
+- does not modify timestamps
+- saves progress in real time
+- supports retry and resume behavior
+
+### `print_diarization_change.py`
+Prints:
+
+- changed speaker-label windows
+- transcript grouped by speaker
+- timestamped transcript using current speaker labels
+
+### `reprocess_transcript_csv.py`
+Runs the full pipeline for annotation CSV files that contain transcript rows, then writes a new CSV with a `new transcript` column.
 
 ---
 
-# Pipeline
+# Full Pipeline
 
 ```text
 Raw Transcript TXT
@@ -45,34 +89,20 @@ Corrected speaker labels
         ↓
 print_diarization_change.py
         ↓
-Human-readable diarization summary
+Human-readable corrected transcript
 ```
 
 ---
 
-# 1. Parse Transcript
+# How to Run the Full Pipeline
 
-## File
+## 1. Set API Key
 
-```text
-parse_transcript.py
+```bash
+export OPENAI_API_KEY="$(cat ~/.openai_api_key)"
 ```
 
-## Purpose
-
-Parses raw transcript text into structured JSON.
-
-Creates:
-- word-level entries
-- sentence-level chunks
-- immutable timestamps
-- original speaker labels
-
-No LLM is used in this step.
-
----
-
-## Run
+## 2. Parse transcript text into JSON
 
 ### Single file
 
@@ -86,40 +116,104 @@ python parse_transcript.py example/sample.txt -o parsed --pretty
 python parse_transcript.py example -o parsed --pretty
 ```
 
----
+## 3. Run speaker diarization
 
-## Output Example
+### Default method
 
-```json
-{
-  "sentence_id": 0,
-  "start_timestamp": "00:00:47",
-  "end_timestamp": "00:00:48",
-  "speaker_labels": ["User A"],
-  "text": "Hello there."
-}
+```bash
+python speaker_diarization.py \
+  --input parsed \
+  -o diarized_output
+```
+
+### Pre/post context method
+
+```bash
+python speaker_diarization.py \
+  --input parsed \
+  -o diarized_output \
+  --diarize-method pre_post_windowed_context
+```
+
+## 4. Print the corrected transcript
+
+### Show changed windows
+
+```bash
+python print_diarization_change.py diarized_output
+```
+
+### Show transcript grouped by speaker
+
+```bash
+python print_diarization_change.py diarized_output --transcript
+```
+
+### Show timestamped transcript
+
+```bash
+python print_diarization_change.py diarized_output --timestamped-transcript
 ```
 
 ---
 
-# 2. Speaker Diarization Correction
+# Run the CSV Reprocessing Pipeline
 
-## File
+Use this when your annotation CSV contains one transcript per row, for example with columns like:
+
+- `filename`
+- `transcript`
+
+The CSV pipeline will:
+
+1. save each row's transcript as a text file named from `filename`
+2. run parsing
+3. run diarization
+4. generate timestamped transcript output
+5. write a new CSV with a `new transcript` column
+
+## Run one CSV file directly
+
+```bash
+python reprocess_transcript_csv.py \
+  --input-csv annotations.csv \
+  --output-csv annotations.reprocessed.csv \
+  --work-dir reprocess_runs/annotations \
+  --model gpt-5.4 \
+  --diarize-method pre_post_windowed_context
+```
+
+## Run multiple CSV files from the shell script
+
+```bash
+bash script/reprocess_csv.sh
+```
+
+In `script/reprocess_csv.sh`, define the list of CSV files:
+
+```bash
+BASE_WORK_DIR="reprocess_runs"
+
+ANNOTATION_FILES=(
+  "annotations1.csv"
+  "annotations2.csv"
+  "annotations3.csv"
+)
+```
+
+For each CSV, the script creates a separate work folder and output CSV.
+
+Example outputs:
+
+- `annotations1.csv` → `annotations1.reprocessed.csv`
+- `annotations2.csv` → `annotations2.reprocessed.csv`
+
+Example intermediate folders:
 
 ```text
-speaker_diarization.py
+reprocess_runs/annotations1/
+reprocess_runs/annotations2/
 ```
-
-## Purpose
-
-Uses GPT to correct noisy speaker labels.
-
-The model:
-- does NOT rewrite transcript text
-- does NOT modify timestamps
-- only predicts:
-  - `modified_speaker_label`
-  - `modified_speaker_confidence`
 
 ---
 
@@ -141,63 +235,34 @@ Structured output schema enforcement prevents invalid labels.
 ## `pre_windowed_context`
 
 Uses:
+
 - current sentence
 - previous corrected sentences
 
-Default:
-- previous 10 sentences
+Default context:
 
----
+- previous 10 sentences
 
 ## `pre_post_windowed_context`
 
 Uses:
+
 - previous corrected sentences
 - current sentence
 - future original sentences
 
 Future labels may still be noisy.
 
-Default:
+Default context:
+
 - previous 10 sentences
 - next 5 sentences
 
 ---
 
-# Run Diarization
-
-## Set API Key
-
-```bash
-export OPENAI_API_KEY="$(cat ~/.openai_api_key)"
-```
-
----
-
-## Default Method
-
-```bash
-python speaker_diarization.py \
-  --input parsed \
-  -o diarized_output
-```
-
----
-
-## Pre/Post Context Method
-
-```bash
-python speaker_diarization.py \
-  --input parsed \
-  -o diarized_output \
-  --diarize-method pre_post_windowed_context
-```
-
----
-
 # Output Naming
 
-Generated filenames include diarization method suffixes.
+Generated diarization filenames include the diarization method suffix.
 
 Example:
 
@@ -207,117 +272,53 @@ conversation_001.pre_post_windowed_context.json
 ```
 
 ---
-# 3. Summarize Speaker Label Changes
 
-## File
+# Example: Run One Test End-to-End
 
-```text
-print_diarization_change.py
-```
-
-## Purpose
-
-Utility script for inspecting diarization updates and printing transcripts.
-
-Features:
-
-- Print sentences where:
-
-  ```text
-  original speaker label != modified speaker label
-  ```
-
-- Print surrounding context sentences
-- Print using only current/final speaker labels
-- Print full transcript grouped by speaker
-- Print timestamped word-level transcripts using modified speaker labels
-
-## Examples
+If you want to test the pipeline on a small example first:
 
 ```bash
-python print_diarization_change.py sample.json
-python print_diarization_change.py sample.json --current-only
-python print_diarization_change.py sample.json --transcript
-python print_diarization_change.py sample.json --timestamped-transcript
+export OPENAI_API_KEY="$(cat ~/.openai_api_key)"
+
+python parse_transcript.py example -o parsed --pretty
+
+python speaker_diarization.py \
+  --input parsed \
+  -o output_example \
+  --diarize-method pre_post_windowed_context \
+  --model gpt-5.4
+
+python print_diarization_change.py \
+  output_example \
+  --timestamped-transcript
 ```
+
+This is the easiest way to verify that:
+
+- parsing works
+- diarization works
+- transcript printing works
+
+before running the CSV pipeline.
 
 ---
 
 # Helper Scripts
 
-## Parse
+## Parse example input
 
 ```bash
 bash script/parse.sh
 ```
 
-## Diarize
+## Run diarization
 
 ```bash
 bash script/diarize.sh
 ```
 
-## Summarize Changes
+## Print timestamped transcript / summarize changes
 
 ```bash
 bash script/summarize_diarazation_change.sh
-```
-
----
-
-# Example End-to-End
-
-```bash
-# Step 1
-python parse_transcript.py example -o parsed
-
-# Step 2
-python speaker_diarization.py \
-  --input parsed \
-  -o diarized_output
-
-# Step 3
-python print_diarization_change.py diarized_output
-```
-
-## Reprocess Multiple Annotation CSV Files
-
-If you have multiple annotation CSV files to reprocess, you can use:
-
-```bash
-bash script/reprocess_csv.sh
-```
-
-In `script/reprocess_csv.sh`, set the list of annotation files here:
-
-```bash
-BASE_WORK_DIR="reprocess_runs"
-
-ANNOTATION_FILES=(
-  "annotations1.csv"
-  "annotations2.csv"
-  "annotations3.csv"
-)
-```
-
-The script will:
-
-1. iterate through each CSV in `ANNOTATION_FILES`
-2. create a separate working directory under `reprocess_runs/`
-3. run:
-   - `parse_transcript.py`
-   - `speaker_diarization.py`
-   - `print_diarization_change.py --timestamped-transcript`
-4. save a new CSV for each input file with a `new transcript` column
-
-For example:
-
-- `annotations1.csv` → `annotations1.reprocessed.csv`
-- `annotations2.csv` → `annotations2.reprocessed.csv`
-
-Each CSV gets its own intermediate folder, such as:
-
-```text
-reprocess_runs/annotations1/
-reprocess_runs/annotations2/
 ```
