@@ -6,167 +6,13 @@ import os
 import cv2
 import base64
 from natsort import natsorted
-def return_exact_convos(start_time, end_time, df, turn=False, more_context=True, buffer_seconds=0.0):
-    start_time = max(0.0, float(start_time) - float(buffer_seconds))
-    end_time = float(end_time) + float(buffer_seconds)
-
-    if df.empty:
-        return ""
-
-    agent_id = 'AI Agent:'
-
-    if turn:
-        if (df['timestamp'] < start_time)[df['timestamp'] < start_time].empty:
-            start_index = 0
-        else:
-            start_index = (df['timestamp'] < start_time)[df['timestamp'] < start_time].index[-1]
-
-        if (~(df['timestamp'] > end_time))[(~(df['timestamp'] > end_time))].empty:
-            end_index = len(df) - 1
-        else:
-            end_index = (~(df['timestamp'] > end_time))[(~(df['timestamp'] > end_time))].index[-1]
-
-        if df['speaker'].iloc[start_index] == agent_id:
-            if start_index == 0:
-                curr_df = df.iloc[start_index:start_index + 1, :]
-            else:
-                curr_df = df.iloc[start_index - 1:start_index + 1, :]
-        else:
-            if start_index == len(df) - 1:
-                curr_df = df.iloc[start_index:start_index + 1, :]
-            else:
-                curr_df = df.iloc[start_index:start_index + 2, :]
-
-        conversation = "\n".join(f"{row['speaker']} {row['text']}" for _, row in curr_df.iterrows())
-        return conversation
-
-    # exact mode: keep only rows whose timestamps are inside the buffered window
-    curr_df = df[(df["timestamp"] >= start_time) & (df["timestamp"] <= end_time)].copy()
-
-    if curr_df.empty:
-        return ""
-
-    # Reconstruct text grouped by contiguous speaker segments
-    conversation_lines = []
-    current_speaker = None
-    current_tokens = []
-
-    for _, row in curr_df.iterrows():
-        speaker = row["speaker"]
-        text = str(row["text"]).strip()
-
-        if text == "":
-            continue
-
-        if current_speaker is None:
-            current_speaker = speaker
-            current_tokens = [text]
-        elif speaker == current_speaker:
-            current_tokens.append(text)
-        else:
-            conversation_lines.append(f"{current_speaker} {' '.join(current_tokens).strip()}")
-            current_speaker = speaker
-            current_tokens = [text]
-
-    if current_speaker is not None and current_tokens:
-        conversation_lines.append(f"{current_speaker} {' '.join(current_tokens).strip()}")
-
-    return "\n".join(conversation_lines)
-
-
-def get_transcript(timestamp_dict, transcriptions, session_name=None, data_path=None, time_type=None,
-                   mode="turn", buffer_seconds=0.0):
-    start_time = timestamp_dict['start']
-    end_time = timestamp_dict['end']
-
-    context_transcriptions = []
-    turn_context_transcriptions = []
-
-    transcriptions = transcriptions.split('\n')
-    speaker = None
-
-    for transcription in transcriptions:
-        if 'User' in transcription or 'AI Agent' in transcription:
-            speaker = transcription.replace("\n", "")
-        elif '(' in transcription and ')' in transcription and ':' in transcription and speaker is not None:
-            times_list = find_all_indexes(transcription, "(")
-            all_words = ""
-
-            for i, time in enumerate(times_list):
-                start_index = time
-                end_index = time + 10  # assumes (hh:mm:ss)
-                time_str = transcription[start_index:end_index]
-
-                if i != len(times_list) - 1:
-                    word = transcription[end_index:times_list[i + 1]]
-                else:
-                    word = transcription[end_index:]
-
-                cleaned_word = word.replace("\n", " ").strip()
-                all_words += (" " + cleaned_word) if cleaned_word else ""
-
-                tmp = time_str.split('(')[-1].split(')')[0].split(":")
-                _timestamp = float(tmp[0]) * 3600 + float(tmp[1]) * 60 + float(tmp[2])
-
-                if i == 0:
-                    start_all_timestamp = _timestamp
-
-                context_transcriptions.append({
-                    'timestamp': _timestamp,
-                    'speaker': speaker,
-                    'text': cleaned_word
-                })
-
-            turn_context_transcriptions.append({
-                'timestamp': start_all_timestamp,
-                'speaker': speaker,
-                'text': all_words.strip()
-            })
-
-    new_context_transcriptions = [ct for ct in context_transcriptions if ct['text'] != '']
-    new_turn_context_transcriptions = [ct for ct in turn_context_transcriptions if ct['text'] != '']
-
-    df = pd.DataFrame(new_context_transcriptions)
-    df_turn = pd.DataFrame(new_turn_context_transcriptions)
-
-    if mode == "turn":
-        return return_exact_convos(
-            start_time,
-            end_time,
-            df_turn,
-            turn=True,
-            buffer_seconds=buffer_seconds,
-        )
-    elif mode == "exact":
-        return return_exact_convos(
-            start_time,
-            end_time,
-            df,
-            turn=False,
-            buffer_seconds=buffer_seconds,
-        )
-    else:
-        raise ValueError(f"Unsupported transcript mode: {mode}")
-
-
-def _valid_timestamp(interval):
-    ts = interval.get("timestamp", {})
-    start = ts.get("start")
-    end = ts.get("end")
-    return not isinstance(start, list) and not isinstance(end, list) and start is not None and end is not None
 
 def find_overlapping_interval_groups_pair(intervals1, intervals2):
-    intervals1 = [i for i in intervals1 if _valid_timestamp(i)]
-    intervals2 = [i for i in intervals2 if _valid_timestamp(i)]
+    # Sort intervals based on start value
+    
 
-    sorted_intervals1 = sorted(
-        enumerate(intervals1),
-        key=lambda x: x[1]["timestamp"]["start"]
-    )
-    sorted_intervals2 = sorted(
-        enumerate(intervals2),
-        key=lambda x: x[1]["timestamp"]["start"]
-    )
+    sorted_intervals1 = sorted(enumerate(intervals1), key=lambda x: x[1]['timestamp']['start'] )
+    sorted_intervals2 = sorted(enumerate(intervals2), key=lambda x: x[1]['timestamp']['start'])
 
     overlapping_groups = []
 
@@ -327,6 +173,103 @@ def disagree_operation(dict1, dict2):
 
 def find_all_indexes(string, substring):
     return [index for index, _ in enumerate(string) if string[index:index + len(substring)] == substring]
+
+def return_exact_convos(start_time,end_time,df, turn = False, more_context = True):
+
+    agent_id = 'AI Agent:'
+
+
+    conversation = ""
+    if (df['timestamp'] < start_time)[df['timestamp'] < start_time].empty:
+        start_index = 0
+    else:
+        start_index = (df['timestamp'] < start_time)[df['timestamp'] < start_time].index[-1]
+        
+    if (df['timestamp'] < start_time)[df['timestamp'] < start_time].empty:
+        end_index = 0
+    else:
+        end_index = (~(df['timestamp'] > end_time))[(~(df['timestamp'] > end_time))].index[-1]
+
+
+    if turn:
+        if df['speaker'].iloc[start_index] == agent_id: #get what user did before 
+            if start_index == 0: 
+                curr_df = df.iloc[start_index:start_index + 1,:]
+            else: 
+                curr_df = df.iloc[start_index - 1 :start_index + 1,:]
+        else: #get what agent does next
+            if start_index == len(df) - 1: 
+                curr_df =  df.iloc[start_index:start_index + 1,:] 
+            else:
+                curr_df = df.iloc[start_index :start_index + 2,:]
+
+    if not turn:
+        curr_df = df.iloc[start_index:end_index + 1,:] #if you don't want the next turn to be included just get rid of the +1 or add end_index +1 
+    
+    if start_index != 0 and start_index != len(df) - 1 and len(curr_df) <= 1:
+        pdb.set_trace()
+
+    conversation = "\n".join(f"{row['speaker']} {row['text']}" for _, row in curr_df.iterrows())
+    return conversation
+
+
+
+def get_transcript(timestamp_dict, transcriptions, session_name = None, data_path = None, time_type = None):
+    
+    start_time = timestamp_dict['start']
+    end_time = timestamp_dict['end']
+
+    context_transcriptions = []
+    turn_context_transcriptions = []
+
+    transcriptions = transcriptions.split('\n')
+
+    for transcription in transcriptions:
+        if 'User' in transcription or 'AI Agent' in transcription: 
+            speaker = transcription.replace("\n", "")
+        elif '(' in transcription and ')' in transcription and ':' in transcription:
+            
+            times_list = find_all_indexes(transcription, "(")
+            all_words = ""
+            for i, time in enumerate(times_list):
+                
+                start_index = time
+                end_index = time + 10 #the time stamp is 10 characters so we just index 10 indices away
+                time_str = transcription[start_index: end_index]
+
+                if i != len(times_list)-1:
+                    word = transcription[end_index: times_list[i+1]]
+                else:
+                    word = transcription[end_index:]
+
+                all_words += " " + word.replace(" ", "")
+                tmp = time_str.split('(')[-1].split(')')[0].split(":")
+                _timestamp = float(tmp[0]) * 3600 + float(tmp[1]) * 60 + float(tmp[2])
+                if i == 0:
+                    start_all_timestamp = _timestamp
+                    
+                context_transcriptions.append({'timestamp':_timestamp, 'speaker':speaker, 'text': word})
+
+            turn_context_transcriptions.append({'timestamp':start_all_timestamp, 'speaker':speaker, 'text': all_words})
+    
+    new_context_transcriptions = []
+    for ct in context_transcriptions:
+        if ct['text'] == '\n':
+            pass
+        else:
+            new_context_transcriptions.append(ct)
+
+
+
+    df = pd.DataFrame(new_context_transcriptions)
+    df_turn = pd.DataFrame(turn_context_transcriptions)
+
+    
+    turn_convo = return_exact_convos(start_time,end_time,df_turn, turn = True)
+    return turn_convo
+
+
+
 
 
 def get_majority(items):
@@ -591,3 +534,133 @@ def fill_and_write_video(frame_dir, output_dir, fps=24):
     out.release()
     print(f"Video saved to {output_video_path}")
     return output_video_path
+
+def parse_transcript_word_and_turn_dfs(transcriptions):
+    context_transcriptions = []
+    turn_context_transcriptions = []
+
+    transcriptions = transcriptions.split('\n')
+    speaker = None
+
+    for transcription in transcriptions:
+        if 'User' in transcription or 'AI Agent' in transcription:
+            speaker = transcription.replace("\n", "")
+        elif '(' in transcription and ')' in transcription and ':' in transcription:
+            times_list = find_all_indexes(transcription, "(")
+            all_words = ""
+            turn_words = []
+
+            for i, time in enumerate(times_list):
+                start_index = time
+                end_index = time + 10
+                time_str = transcription[start_index:end_index]
+
+                if i != len(times_list) - 1:
+                    word = transcription[end_index:times_list[i + 1]]
+                else:
+                    word = transcription[end_index:]
+
+                all_words += " " + word.replace(" ", "")
+                tmp = time_str.split('(')[-1].split(')')[0].split(":")
+                _timestamp = float(tmp[0]) * 3600 + float(tmp[1]) * 60 + float(tmp[2])
+
+                if i == 0:
+                    start_all_timestamp = _timestamp
+
+                word_entry = {
+                    'timestamp': _timestamp,
+                    'speaker': speaker,
+                    'text': word,
+                }
+                context_transcriptions.append(word_entry)
+                turn_words.append(word_entry)
+
+            turn_context_transcriptions.append({
+                'timestamp': start_all_timestamp,
+                'speaker': speaker,
+                'text': all_words,
+                'words': turn_words,
+            })
+
+    new_context_transcriptions = []
+    for ct in context_transcriptions:
+        if ct['text'] == '\n':
+            pass
+        else:
+            new_context_transcriptions.append(ct)
+
+    df_word = pd.DataFrame(new_context_transcriptions)
+    df_turn = pd.DataFrame(turn_context_transcriptions)
+    return df_word, df_turn
+
+
+def get_selected_turn_df(start_time, end_time, df_turn):
+    agent_id = 'AI Agent:'
+
+    if (df_turn['timestamp'] < start_time)[df_turn['timestamp'] < start_time].empty:
+        start_index = 0
+    else:
+        start_index = (df_turn['timestamp'] < start_time)[df_turn['timestamp'] < start_time].index[-1]
+
+    if (df_turn['timestamp'] < start_time)[df_turn['timestamp'] < start_time].empty:
+        end_index = 0
+    else:
+        end_index = (~(df_turn['timestamp'] > end_time))[(~(df_turn['timestamp'] > end_time))].index[-1]
+
+    if df_turn['speaker'].iloc[start_index] == agent_id:
+        if start_index == 0:
+            curr_df = df_turn.iloc[start_index:start_index + 1, :]
+        else:
+            curr_df = df_turn.iloc[start_index - 1:start_index + 1, :]
+    else:
+        if start_index == len(df_turn) - 1:
+            curr_df = df_turn.iloc[start_index:start_index + 1, :]
+        else:
+            curr_df = df_turn.iloc[start_index:start_index + 2, :]
+
+    return curr_df.copy()
+
+
+def get_transcript_with_duration(timestamp_dict, transcriptions):
+    start_time = timestamp_dict['start']
+    end_time = timestamp_dict['end']
+
+    df_word, df_turn = parse_transcript_word_and_turn_dfs(transcriptions)
+    selected_turn_df = get_selected_turn_df(start_time, end_time, df_turn)
+
+    conversation = "\n".join(
+        f"{row['speaker']} {row['text']}" for _, row in selected_turn_df.iterrows()
+    )
+
+    if len(selected_turn_df) == 0:
+        return {
+            'conversation': "",
+            'transcript_start': None,
+            'transcript_end': None,
+            'transcript_duration': None,
+            'selected_turn_df': selected_turn_df,
+        }
+
+    first_words = selected_turn_df.iloc[0]['words']
+    last_words = selected_turn_df.iloc[-1]['words']
+
+    if len(first_words) == 0 or len(last_words) == 0:
+        return {
+            'conversation': conversation,
+            'transcript_start': None,
+            'transcript_end': None,
+            'transcript_duration': None,
+            'selected_turn_df': selected_turn_df,
+        }
+
+    transcript_start = first_words[0]['timestamp']
+    transcript_end = last_words[-1]['timestamp']
+    transcript_duration = transcript_end - transcript_start
+
+    return {
+        'conversation': conversation,
+        'transcript_start': transcript_start,
+        'transcript_end': transcript_end,
+        'transcript_duration': transcript_duration,
+        'selected_turn_df': selected_turn_df,
+    }

@@ -5,15 +5,13 @@ set -euo pipefail
 
 # Edit these lists
 csv_files=(
-  #"../shrec_data/shrec_wellness_dorm/data/train.csv"
-  #"../shrec_data/shrec_wellness_home/data/train.csv"
-  "../shrec_data/shrec_wellness_empathic/data/train.csv"
+  "../shrec_data/shrec_wellness_dorm/data/train.csv"
+  "../shrec_data/shrec_wellness_home/data/train.csv"
 )
 
 data_names=(
-  #"nt_shrec_wellness_dorm"
-  #"nt_shrec_wellness_home"
-  "nt_shrec_wellness_empathic"
+  "shrec_wellness_dorm"
+  "shrec_wellness_home"
 )
 
 task_types=(
@@ -27,8 +25,6 @@ task_types=(
   "detection_error_only"
 )
 
-# Optional shared args
-transcript_level="exact"
 
 # Sanity check: csv_files and data_names must align by index
 if [ "${#csv_files[@]}" -ne "${#data_names[@]}" ]; then
@@ -41,11 +37,12 @@ for i in "${!csv_files[@]}"; do
   name="${data_names[$i]}"
 
   for task in "${task_types[@]}"; do
-    echo "Running: python main_vlm_get_data.py --data_path $csv --data_name $name --task_type $task --transcript_level $transcript_level"
-    python3 ./sanity_check/main_vlm_get_data_exact.py \
+    echo "Running: python analyze_transcript_duration_delta.py --data_path $csv --data_name $name --task_type $task"
+    python ./sanity_check/analyze_transcript_duration_delta.py \
       --data_path "$csv" \
       --data_name "$name" \
       --task_type "$task" \
-      --transcript_level "$transcript_level"
+      --plot_path ./analysis/duration_delta_plots \
+      --csv_path ./analysis/duration_delta_csv
   done
 done

@@ -197,10 +197,11 @@ for index, row in df.iterrows():
     for sample in intervals2:intervals.append(sample['timestamp'])
 
     #Find no annotations regions for experiments
+    task_dataset_no_annotation[k] = []
     try:
         task_dataset_no_annotation[k] = find_uncovered_float_intervals(intervals, total_time_range)
-    except Exception:
-        pdb.set_trace()
+    except Exception as e:
+        print(f"No annotation intervals for video: {k} ({e})")
 
 
 
@@ -292,23 +293,25 @@ if task_type in ['debug' , 'detection']:
             
 
             len_true_annotations = max(task_dataset_agreed_overlap[k].keys()) 
-            len_none_annotations = len(task_dataset_no_annotation[k]) 
+            #len_none_annotations = len(task_dataset_no_annotation[k]) 
+            no_annotation_intervals = task_dataset_no_annotation.get(k, [])
+            len_none_annotations = len(no_annotation_intervals)
             min_annotations = min(len_true_annotations,len_none_annotations)
 
 
             random.shuffle(task_dataset_curr)
-            random.shuffle(task_dataset_no_annotation[k])
-
+            #random.shuffle(task_dataset_no_annotation[k])
+            random.shuffle(no_annotation_intervals)
         
         count = 0
         for i in range(min_annotations):
             
-            if len(task_dataset_no_annotation[k]) == 0:
+            if len(no_annotation_intervals) == 0:
                 continue 
 
             else:
                 try:
-                    timestamp_dict = task_dataset_no_annotation[k][i]
+                    timestamp_dict = no_annotation_intervals[i]
                 except Exception:
                     pdb.set_trace()
 

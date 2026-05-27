@@ -1,26 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
 root="/mnt/ssd1/SHREC/SHREC"
-#
+# L_MODELS=(
+#   "GPT4o_MINI_Lang"
+# )
 
 VL_MODELS=(
-  "Llama-3.2-11B-Vision-Instruct"
+  "GPT4o_MINI_Lang"
 )
 
-TASK_TYPES_FOLDER="${root}/output_datasets"
+TASK_TYPES_FOLDER="${root}/output_datasets_org"
 
 CSV_FILES=(
-  "../shrec_hf/shrec_wellness_dorm.csv"
-  "../shrec_hf/shrec_wellness_home.csv"
+  "../shrec_data/shrec_wellness_dorm/data/shrec_wellness_dorm.csv"
+  "../shrec_data/shrec_wellness_home/data/shrec_wellness_home.csv"
+  "../shrec_data/shrec_wellness_empathic/data/shrec_wellness_empathic.csv"
 )
 
 IMAGE_PATHS=(
-  "../shrec_hf/shrec_wellness_dorm"
-  "../shrec_hf/shrec_wellness_home"
+  "../shrec_data/shrec_wellness_dorm"
+  "../shrec_data/shrec_wellness_home"
+  "../shrec_data/shrec_wellness_empathic"
 )
 
-DATA_PATH="./output_datasets"
+DATA_PATH="./output_datasets_org"
 CONTEXT_WINDOW=15
 
 find_matching_csv() {

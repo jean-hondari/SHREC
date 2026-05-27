@@ -38,19 +38,29 @@ random.seed(args.seed)
 task_type = args.task_type
 data_path = args.data_path
 
-file_path = './output/{}_{}.json'.format(args.model, args.task_type)
 
+script_dir = Path(__file__).resolve().parent
+output_dir = script_dir / 'output'
+file_path = output_dir / '{}_{}.json'.format(args.model, args.task_type)
 
 with open(os.path.join(data_path,task_type), 'rb') as pkl_file:
     processed_dataset = pickle.load(pkl_file)
 
 random.shuffle(processed_dataset)
 
-images_dir = args.images_dir 
+images_dir = args.images_dir
 df = pd.read_csv(args.csv_path)
 model_name = args.model
 results = []
-count = 0
+if file_path.exists():
+    with open(file_path, 'r') as f:
+        try:
+            loaded_results = json.load(f)
+            if isinstance(loaded_results, list):
+                results = loaded_results
+        except Exception:
+            results = []
+count = len(results)
 context_window = float(args.context_window)
 video = bool(args.video)
 
@@ -128,8 +138,10 @@ if model_name in ['GPT4o_MINI_Lang', 'GPT4o_Lang', 'Llama-3.2-3B', 'Llama-3.2-3B
 
 
 print('\n Dataset Size is: ', len(processed_dataset))
+print('[INFO] Resuming from completed samples:', count)
 for i, sample in enumerate(processed_dataset):
-
+    if i < count:
+        continue
     if video:
         video_id = sample["video_id"]
         print("[INFO] Processing {} ...".format(video_id.lower()))
@@ -147,8 +159,23 @@ for i, sample in enumerate(processed_dataset):
 
         img_path_list = get_frame_paths(frames_dir, sample['timestamp']['start'] * frame_rate, sample['timestamp']['end']* frame_rate)
         
+        start_ts = sample['timestamp']['start']
+        end_ts = sample['timestamp']['end']
+        num_selected_frames = len(img_path_list)
 
+        if num_selected_frames > 0:
+            random_frame_name = [int(os.path.basename(img_path).replace(".png", "")) // frame_rate for img_path in img_path_list] 
+        else:
+            random_frame_name = None
 
+        print(
+            f"[DEBUG] sample_index={i} video_id={video_id} "
+            f"start={start_ts} end={end_ts} "
+            f"selected_frames={num_selected_frames} "
+            f"random_frame={random_frame_name}"
+        )
+
+        
         if model_name in ['o1', 'o1-mini','gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-flash-8b', 'gemini-1.5-pro', 'llava_video_next', 'llava_video_next_7b_dpo', 'GPT4o_Image_cot', 'GPT4o_Image_few_shot', "GPT4o_MINI_Lang", "GPT4o_Lang", "GPT4o_MINI_Image", "GPT4o_Image"]:
             print('extract video for gemini/openai models')
             base64Frames = process_images_base64(img_path_list)
@@ -161,7 +188,7 @@ for i, sample in enumerate(processed_dataset):
                 transcription = sample['transcript']
             elif 'transcription' in sample.keys():
                 transcription = sample['transcription']
-   
+            
     reason = sample['rationale']
 
     if  'debug' in task_type:
@@ -404,41 +431,30 @@ for i, sample in enumerate(processed_dataset):
     else:
         img_path_list.append(full_prompt)
 
-    if model_name in ['o1', 'o1-mini', 'gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-flash-8b', 'gemini-1.5-pro', 'llava_video_next', 'llava_video_next_7b_dpo', 'GPT4o_Image_cot', "GPT4o_MINI_Lang", "GPT4o_Lang", "GPT4o_MINI_Image", "GPT4o_Image"]:
-        response = model.chat(full_prompt, img_frames=base64Frames, transcription=transcription, vid_path=vid_path, examples=None)
-    elif model_name == 'GPT4o_Image_few_shot':
-        examples = get_few_shot_examples(processed_dataset, sample)
-        response = model.chat(full_prompt, img_frames=base64Frames, transcription=transcription, vid_path=vid_path, examples=examples)
-    else:
-        response = model.generate(img_path_list)
+    try:
+        if model_name in ['o1', 'o1-mini', 'gemini-1.5-flash', 'gemini-2.0-flash-exp', 'gemini-1.5-flash-8b', 'gemini-1.5-pro', 'llava_video_next', 'llava_video_next_7b_dpo', 'GPT4o_Image_cot', "GPT4o_MINI_Lang", "GPT4o_Lang", "GPT4o_MINI_Image", "GPT4o_Image"]:
+            response = model.chat(full_prompt, img_frames=base64Frames, transcription=transcription, vid_path=vid_path, examples=None)
+        elif model_name == 'GPT4o_Image_few_shot':
+            examples = get_few_shot_examples(processed_dataset, sample)
+            response = model.chat(full_prompt, img_frames=base64Frames, transcription=transcription, vid_path=vid_path, examples=examples)
+        else:
+            response = model.generate(img_path_list)
+        error_msg = None
+    except Exception as e:
+        response = ''
+        error_msg = str(e)
+        print(f"[WARN] Inference failed for sample index {i}: {error_msg}")
 
     count += 1
-    
-    print("="*100)
-    print()
-    print("[prompt]")
-    print(full_prompt)
-    print("="*100)
-    print()
-    print("[response]")
-    print(response.replace('\n',''))
-    print("="*100)
-    print()
-    print("[label]")
-    print(answer)
 
+    results.append({'question': full_prompt, 'response': response, 'label': answer, 'rationale': reason, 'error': error_msg})
 
-    print("="*100)
-    print()
-    
-    results.append({'question': full_prompt, 'response': response, 'label': answer, 'rationale': reason})
- 
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with open(file_path, 'w') as json_file:
+        json.dump(results, json_file, indent=4)
+
     print("[INFO] Total number of processed results:", "{}/{}".format(str(count),str(len(processed_dataset))))
-    break
 
-folder_path = os.path.join(os.getcwd(), 'output')
-if not os.path.exists(folder_path):
-    os.makedirs(folder_path)
-
+output_dir.mkdir(parents=True, exist_ok=True)
 with open(file_path, 'w') as json_file:
     json.dump(results, json_file, indent=4)

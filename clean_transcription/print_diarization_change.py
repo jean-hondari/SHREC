@@ -29,6 +29,12 @@ def get_current_label(sentence: Dict[str, Any]) -> str:
     return modified if modified else get_original_label(sentence)
 
 
+def get_label(sentence: Dict[str, Any], use_original: bool = False) -> str:
+    if use_original:
+        return get_original_label(sentence)
+    return get_modified_label(sentence) or get_original_label(sentence)
+
+
 def get_changed_sentence_ids(sentences: List[Dict[str, Any]]) -> List[int]:
     changed_ids = []
 
@@ -79,11 +85,19 @@ def print_changed_windows(
         print()
 
 
-def print_transcript(sentences: List[Dict[str, Any]], current_only: bool = True) -> None:
+def print_transcript(
+    sentences: List[Dict[str, Any]],
+    current_only: bool = True,
+    use_original: bool = False,
+) -> None:
     last_label = None
 
     for sentence in sentences:
-        label = get_current_label(sentence) if current_only else get_original_label(sentence)
+        if use_original:
+            label = get_original_label(sentence)
+        else:
+            label = get_current_label(sentence) if current_only else get_original_label(sentence)
+
         text = sentence.get("text", "")
 
         if label != last_label:
@@ -93,13 +107,17 @@ def print_transcript(sentences: List[Dict[str, Any]], current_only: bool = True)
 
         print(text)
 
+
 def format_word_with_timestamp(word: Dict[str, Any]) -> str:
     timestamp = word.get("timestamp", "N/A")
     text = word.get("word", "")
     return f"({timestamp}) {text}"
 
 
-def print_timestamped_transcript(sentences: List[Dict[str, Any]]) -> None:
+def print_timestamped_transcript(
+    sentences: List[Dict[str, Any]],
+    use_original: bool = False,
+) -> None:
     last_label = None
     current_words = []
 
@@ -109,7 +127,7 @@ def print_timestamped_transcript(sentences: List[Dict[str, Any]]) -> None:
             print()
 
     for sentence in sentences:
-        label = get_modified_label(sentence) or get_original_label(sentence)
+        label = get_label(sentence, use_original=use_original)
         words = sentence.get("words", [])
 
         if label != last_label:
@@ -122,6 +140,7 @@ def print_timestamped_transcript(sentences: List[Dict[str, Any]]) -> None:
             current_words.append(format_word_with_timestamp(word))
 
     flush_block()
+
 
 def collect_json_files(path: Path) -> List[Path]:
     if path.is_file():
@@ -157,7 +176,12 @@ def main() -> None:
     parser.add_argument(
         "--timestamped-transcript",
         action="store_true",
-        help="Print full transcript using modified speaker labels and word-level timestamps.",
+        help="Print full transcript using speaker labels and word-level timestamps.",
+    )
+    parser.add_argument(
+        "--original-speaker-label",
+        action="store_true",
+        help="Use original speaker labels when printing transcript output.",
     )
 
     args = parser.parse_args()
@@ -176,9 +200,16 @@ def main() -> None:
         print("#" * 100)
 
         if args.timestamped_transcript:
-            print_timestamped_transcript(sentences)
+            print_timestamped_transcript(
+                sentences,
+                use_original=args.original_speaker_label,
+            )
         elif args.transcript:
-            print_transcript(sentences, current_only=True)
+            print_transcript(
+                sentences,
+                current_only=not args.original_speaker_label,
+                use_original=args.original_speaker_label,
+            )
         else:
             changed_indices = get_changed_sentence_ids(sentences)
             print_changed_windows(

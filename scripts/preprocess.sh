@@ -5,13 +5,15 @@ set -euo pipefail
 
 # Edit these lists
 csv_files=(
-  "../shrec_data/shrec_wellness_dorm/data/train.csv"
-  "../shrec_data/shrec_wellness_home/data/train.csv"
+  #"../shrec_data/shrec_wellness_dorm/data/train.csv"
+  #"../shrec_data/shrec_wellness_home/data/train.csv"
+  "../shrec_data/shrec_wellness_empathic/data/train.csv"
 )
 
 data_names=(
-  "shrec_wellness_dorm"
-  "shrec_wellness_home"
+  #"shrec_wellness_dorm"
+  #"shrec_wellness_home"
+  "shrec_wellness_empathic"
 )
 
 task_types=(

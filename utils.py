@@ -7,46 +7,52 @@ import cv2
 import base64
 from natsort import natsorted
 
-def find_overlapping_interval_groups_pair(intervals1, intervals2):
-    # Sort intervals based on start value
-    
+def _valid_timestamp(interval):
+    ts = interval.get("timestamp", {})
+    start = ts.get("start")
+    end = ts.get("end")
+    return not isinstance(start, list) and not isinstance(end, list) and start is not None and end is not None
 
-    sorted_intervals1 = sorted(enumerate(intervals1), key=lambda x: x[1]['timestamp']['start'] )
-    sorted_intervals2 = sorted(enumerate(intervals2), key=lambda x: x[1]['timestamp']['start'])
+def find_overlapping_interval_groups_pair(intervals1, intervals2):
+    intervals1 = [i for i in intervals1 if _valid_timestamp(i)]
+    intervals2 = [i for i in intervals2 if _valid_timestamp(i)]
+
+    sorted_intervals1 = sorted(
+        enumerate(intervals1),
+        key=lambda x: x[1]["timestamp"]["start"]
+    )
+    sorted_intervals2 = sorted(
+        enumerate(intervals2),
+        key=lambda x: x[1]["timestamp"]["start"]
+    )
 
     overlapping_groups = []
 
     for current_index, current_interval in sorted_intervals1:
-
-        # if current_interval['timestamp']['start'] != None and current_interval['timestamp']['end'] != None :
-        #     continue
-
         current_group = [current_interval]
-        added = False 
-        
+        added = False
         need_rerank_group = []
+
         for index, interval in sorted_intervals2:
-            # if interval['timestamp']['start'] == None or interval['timestamp']['end']:
-            #     continue
             if interval['timestamp']['start'] < current_interval['timestamp']['start'] and interval['timestamp']['end'] > current_interval['timestamp']['end'] and abs(interval['timestamp']['end'] - current_interval['timestamp']['end']) < 10:
-                need_rerank_group.append((index,interval))
+                need_rerank_group.append((index, interval))
             elif interval['timestamp']['start'] > current_interval['timestamp']['start'] and interval['timestamp']['end'] < current_interval['timestamp']['end'] and abs(interval['timestamp']['end'] - current_interval['timestamp']['end']) < 10:
-                need_rerank_group.append((index,interval))
+                need_rerank_group.append((index, interval))
             elif abs(interval['timestamp']['start'] - current_interval['timestamp']['start']) < 3:
-                need_rerank_group.append((index,interval))
+                need_rerank_group.append((index, interval))
             elif abs(interval['timestamp']['end'] - current_interval['timestamp']['end']) < 3:
-                need_rerank_group.append((index,interval))
-        
-        #finished populating potential matches rank by closest to end and start
+                need_rerank_group.append((index, interval))
+
         for index, match_interval in need_rerank_group:
             if current_interval['error'] == match_interval['error']:
                 current_group.append(match_interval)
                 sorted_intervals2.remove((index, match_interval))
                 overlapping_groups.append(current_group)
-                added = True 
+                added = True
                 break
-        
+
         if len(need_rerank_group) > 0 and not added:
+            index, match_interval = need_rerank_group[0]
             current_group.append(match_interval)
             sorted_intervals2.remove((index, match_interval))
             overlapping_groups.append(current_group)
@@ -54,11 +60,8 @@ def find_overlapping_interval_groups_pair(intervals1, intervals2):
         if len(need_rerank_group) == 0 and not added:
             overlapping_groups.append(current_group)
 
-        
-    #add remaining from interval2
     for index, interval in sorted_intervals2:
         overlapping_groups.append([interval])
-    
 
     return overlapping_groups
 

@@ -7,7 +7,7 @@ from natsort import natsorted
 
 dataset = 'empathic'
 dir_path = "./output_pydantic"
-key_dict = {"A": "Emotions", "B": "Engagement", "C": "Conversational Mechanics", "D": "Knowledge State", "E":"Intention", "F":"Social and Context Relationships", "G":"Social Norms and Routines"}
+key_dict = {"A": "Emotions", "B": "Engagement", "C": "Conversational Mechanics", "D": "Knowledge State", "E":"Intention", "F":"Social Context and Relationships", "G":"Social Norms and Routines"}
 
 
 
@@ -55,7 +55,7 @@ for exp in exps:
                 if sample['label'] == True:
                     correct_count += 1
             elif 'C' in answer or 'none' in answer.lower(): 
-                if sample['label']['isCompotence'] == None:
+                if isinstance(sample['label'], dict) and sample['label'].get('isCompetence') is None:
                     correct_count += 1 
         
         if 'attribute' in task:
