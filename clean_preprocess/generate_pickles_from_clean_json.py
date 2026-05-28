@@ -2,28 +2,11 @@
 """
 Generate task-specific pickle files from the cleaned detection-agreed JSON file.
 
-Design:
-- The cleaning step already:
-  1. enforced detection agreement
-  2. removed intervals without frames
-  3. stored transcript with sentence timestamps
-- This script only performs task-specific dataset construction.
+Extra filtering options:
+- remove samples with no transcript
+- remove samples whose video_id appears in a blocklist JSON/list
 
-This keeps cleaning separate from task generation.
-
-Supported task types:
-- debug
-- detection
-- detection_error_only
-- attribute
-- attribute_disagree
-- attribute_agreed_multiple
-- attribute_agreed_multiple_subj
-- rationale
-- context
-- correction
-- pre
-- post
+This is useful if no-transcript samples are known to have unreliable transcript alignment.
 """
 
 import argparse
@@ -45,6 +28,65 @@ def load_clean_records(path):
         return json.load(f)
 
 
+def load_blocklist_video_ids(path):
+    """
+    Load a blocklist file and return a set of video_ids.
+
+    Supported input styles:
+    1. JSON list of strings:
+        ["file1", "file2"]
+    2. JSON list of objects with video_id field:
+        [{"video_id": "file1"}, ...]
+    3. no-transcript JSON records from cleaning step:
+        [{"video_id": "...", ...}, ...]
+    """
+    if path is None:
+        return set()
+
+    with open(path, "r") as f:
+        data = json.load(f)
+
+    blocked = set()
+
+    if isinstance(data, list):
+        for item in data:
+            if isinstance(item, str):
+                blocked.add(item)
+            elif isinstance(item, dict) and "video_id" in item:
+                blocked.add(item["video_id"])
+
+    return blocked
+
+
+def filter_clean_records(clean_records, remove_no_transcript=False, blocked_video_ids=None):
+    blocked_video_ids = blocked_video_ids or set()
+
+    filtered = []
+    removed_no_transcript = 0
+    removed_blocked_video = 0
+
+    for rec in clean_records:
+        transcript = rec.get("transcript", "")
+        has_transcript = isinstance(transcript, str) and transcript.strip() != ""
+        video_id = rec.get("video_id")
+
+        if remove_no_transcript and not has_transcript:
+            removed_no_transcript += 1
+            continue
+
+        if video_id in blocked_video_ids:
+            removed_blocked_video += 1
+            continue
+
+        filtered.append(rec)
+
+    print(f"[INFO] Records after optional filtering: {len(filtered)}")
+    print(f"[INFO] Removed for empty transcript: {removed_no_transcript}")
+    print(f"[INFO] Removed for blocked video_id: {removed_blocked_video}")
+
+    return filtered
+
+
 def check_all_false(dictionary):
     if not isinstance(dictionary, dict):
         return False
@@ -52,9 +94,6 @@ def check_all_false(dictionary):
 
 
 def build_detection_dataset(clean_records):
-    """
-    Detection/debug tasks use the cleaned transcript directly.
-    """
     processed_dataset = []
     for rec in clean_records:
         processed_dataset.append(
@@ -72,11 +111,6 @@ def build_detection_dataset(clean_records):
 
 
 def build_detection_error_only_dataset(clean_records):
-    """
-    For detection_error_only:
-    - only keep true error cases
-    - merge attributes with OR after detection agreement has already been satisfied
-    """
     processed_dataset = []
     for rec in clean_records:
         if rec["error"] is not True:
@@ -103,12 +137,6 @@ def build_detection_error_only_dataset(clean_records):
 
 
 def resolve_attribute_agreement(rec, task_type):
-    """
-    Attribute agreement is evaluated only after detection agreement.
-
-    Since the clean JSON already contains only detection-agreed intervals,
-    this function only has to compare annotator attributes.
-    """
     a = rec["annotator_a"]
     b = rec["annotator_b"]
 
@@ -172,9 +200,6 @@ def build_attribute_dataset(clean_records, task_type):
 
 
 def build_rationale_context_correction_dataset(clean_records, task_type):
-    """
-    Build datasets for text-choice style tasks.
-    """
     task_dataset_final = []
 
     for rec in clean_records:
@@ -247,19 +272,6 @@ def build_rationale_context_correction_dataset(clean_records, task_type):
 
 
 def split_speaker_blocks(transcript):
-    """
-    Parse transcript blocks in the cleaned format:
-
-        User
-        00:12-00:14 ...
-        00:14-00:16 ...
-
-        Agent
-        00:16-00:18 ...
-
-    Returns a dict like:
-        {"User": block_text, "Agent": block_text}
-    """
     if not isinstance(transcript, str) or transcript.strip() == "":
         return {}
 
@@ -278,9 +290,6 @@ def split_speaker_blocks(transcript):
 
 
 def build_pre_post_dataset(clean_records, task_type):
-    """
-    Build pre/post datasets from the cleaned speaker-block transcript format.
-    """
     task_dataset_final = []
 
     for rec in clean_records:
@@ -349,12 +358,30 @@ def main():
     parser.add_argument("--task_type", type=str, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--output_dir", type=str, default="./clean_preprocess/output_datasets")
+    parser.add_argument(
+        "--remove_no_transcript",
+        action="store_true",
+        help="Remove samples whose transcript field is empty before task generation.",
+    )
+    parser.add_argument(
+        "--exclude_video_ids_json",
+        type=str,
+        default=None,
+        help="Optional JSON file containing video_ids to exclude. Useful for excluding no-transcript sample filenames.",
+    )
 
     args = parser.parse_args()
     random.seed(args.seed)
     os.makedirs(args.output_dir, exist_ok=True)
 
     clean_records = load_clean_records(args.clean_json_path)
+    blocked_video_ids = load_blocklist_video_ids(args.exclude_video_ids_json)
+
+    clean_records = filter_clean_records(
+        clean_records,
+        remove_no_transcript=args.remove_no_transcript,
+        blocked_video_ids=blocked_video_ids,
+    )
 
     if args.task_type in ["debug", "detection"]:
         processed_dataset = build_detection_dataset(clean_records)
