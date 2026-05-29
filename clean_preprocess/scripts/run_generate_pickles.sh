@@ -3,18 +3,12 @@
 
 
 TASK_TYPES=(
-  "debug"
   "detection"
-  "detection_error_only"
   "attribute"
-  "attribute_disagree"
-  "attribute_agreed_multiple"
   "attribute_agreed_multiple_subj"
-  "rationale"
-  "context"
+  "rationale_error"
+  "rationale_competence"
   "correction"
-  "pre"
-  "post"
 )
 
 CLEAN_JSON_PATH="./clean_preprocess/cleaned_intervals/nt_shrec_wellness_empathic_detection_agreed_cleaned_intervals.json"

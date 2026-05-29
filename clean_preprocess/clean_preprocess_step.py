@@ -44,7 +44,7 @@ def get_full_transcript(row):
     """
     Prefer cleaned transcript if available.
     """
-    for key in ["new transcript", "new_transcript", "transcript", "transcription"]:
+    for key in ["new transcript"]:
         if key in row and isinstance(row[key], str):
             return row[key]
     return ""

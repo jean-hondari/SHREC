@@ -1,26 +1,21 @@
 #!/usr/bin/env python3
-"""
-Generate task-specific pickle files from the cleaned detection-agreed JSON file.
-
-Extra filtering options:
-- remove samples with no transcript
-- remove samples whose video_id appears in a blocklist JSON/list
-
-This is useful if no-transcript samples are known to have unreliable transcript alignment.
-"""
-
 import argparse
 import json
 import os
 import pickle
 import random
 
-from utils_exact import (
-    and_operation,
-    or_operation,
-    filter_dicts_without_subdict_tier2,
-    remove_redundant_strings_id_timestamp,
-)
+from utils_exact import or_operation, remove_redundant_strings_id_timestamp
+
+
+SUPPORTED_TASKS = {
+    "detection",
+    "attribute",
+    "attribute_agreed_multiple_subj",
+    "rationale_error",
+    "rationale_competence",
+    "correction",
+}
 
 
 def load_clean_records(path):
@@ -30,19 +25,14 @@ def load_clean_records(path):
 
 def load_blocklist_video_ids(path):
     """
-    Load a blocklist file and return a set of video_ids.
+    Mandatory blocklist loader.
 
-    Supported input styles:
+    Supported input:
     1. JSON list of strings:
-        ["file1", "file2"]
-    2. JSON list of objects with video_id field:
-        [{"video_id": "file1"}, ...]
-    3. no-transcript JSON records from cleaning step:
-        [{"video_id": "...", ...}, ...]
+        ["video1", "video2"]
+    2. JSON list of dicts with video_id:
+        [{"video_id": "video1"}, ...]
     """
-    if path is None:
-        return set()
-
     with open(path, "r") as f:
         data = json.load(f)
 
@@ -58,8 +48,45 @@ def load_blocklist_video_ids(path):
     return blocked
 
 
-def filter_clean_records(clean_records, remove_no_transcript=False, blocked_video_ids=None):
-    blocked_video_ids = blocked_video_ids or set()
+def has_nonempty_text(value):
+    return isinstance(value, str) and value.strip() != ""
+
+
+def is_binary_error_label(value):
+    return value is True or value is False
+
+
+def count_true_attributes(attr_dict):
+    if not isinstance(attr_dict, dict):
+        return 0
+    return sum(bool(v) for v in attr_dict.values())
+
+
+def get_attr_pair(rec):
+    attr_a = rec.get("annotator_a", {}).get("attribute")
+    attr_b = rec.get("annotator_b", {}).get("attribute")
+
+    if not isinstance(attr_a, dict) or not isinstance(attr_b, dict):
+        return None, None
+
+    return attr_a, attr_b
+
+
+def print_count(stage_name, count):
+    print(f"[INFO] {stage_name}: {count} samples left")
+
+
+def filter_clean_records(clean_records, remove_no_transcript, blocked_video_ids):
+    """
+    Global filtering applied before task-specific construction.
+
+    Included behavior:
+    - ALWAYS remove samples whose video_id is in blocked_video_ids
+    - optionally remove samples with empty transcript
+
+    This filtering affects every task.
+    """
+    print_count("loaded clean records", len(clean_records))
 
     filtered = []
     removed_no_transcript = 0
@@ -67,296 +94,458 @@ def filter_clean_records(clean_records, remove_no_transcript=False, blocked_vide
 
     for rec in clean_records:
         transcript = rec.get("transcript", "")
-        has_transcript = isinstance(transcript, str) and transcript.strip() != ""
         video_id = rec.get("video_id")
-
-        if remove_no_transcript and not has_transcript:
-            removed_no_transcript += 1
-            continue
 
         if video_id in blocked_video_ids:
             removed_blocked_video += 1
             continue
 
+        if remove_no_transcript and not has_nonempty_text(transcript):
+            removed_no_transcript += 1
+            continue
+
         filtered.append(rec)
 
-    print(f"[INFO] Records after optional filtering: {len(filtered)}")
-    print(f"[INFO] Removed for empty transcript: {removed_no_transcript}")
-    print(f"[INFO] Removed for blocked video_id: {removed_blocked_video}")
+    print(f"[INFO] Removed blocked video_ids: {removed_blocked_video}")
+    print_count("after blocked video_id filtering", len(clean_records) - removed_blocked_video)
+
+    if remove_no_transcript:
+        print(f"[INFO] Removed empty-transcript samples: {removed_no_transcript}")
+    print_count("after optional no-transcript filtering", len(filtered))
 
     return filtered
 
 
-def check_all_false(dictionary):
-    if not isinstance(dictionary, dict):
-        return False
-    return all(value is False for value in dictionary.values())
-
-
 def build_detection_dataset(clean_records):
-    processed_dataset = []
-    for rec in clean_records:
-        processed_dataset.append(
-            {
-                "video_id": rec["video_id"],
-                "timestamp": rec["timestamp"],
-                "error": rec["error"],
-                "transcription": rec["transcript"],
-                "rationale": rec["annotator_a"].get("rationale", ""),
-                "attribute": rec["annotator_a"].get("attribute"),
-                "correction": rec["annotator_a"].get("correction", ""),
-            }
-        )
-    return processed_dataset
+    """
+    Construct labels for binary error detection.
 
+    Label construction:
+    - target label = rec["error"]
+    - keep only samples whose agreed detection label is exactly True or False
+    - these are the segments where annotators already agreed on error status
 
-def build_detection_error_only_dataset(clean_records):
-    processed_dataset = []
+    Included in output:
+    - transcript
+    - binary error label
+    - annotator metadata for inspection
+    """
+    print("[INFO] Generating task: detection")
+    processed = []
+    skipped_non_binary = 0
+
     for rec in clean_records:
-        if rec["error"] is not True:
+        error = rec.get("error")
+
+        if not is_binary_error_label(error):
+            skipped_non_binary += 1
             continue
 
-        agreed_attribute = or_operation(
-            rec["annotator_a"].get("attribute"),
-            rec["annotator_b"].get("attribute"),
-        )
-
-        processed_dataset.append(
-            {
-                "video_id": rec["video_id"],
-                "timestamp": rec["timestamp"],
-                "error": rec["error"],
-                "transcription": rec["transcript"],
-                "rationale": rec["annotator_a"].get("rationale", ""),
-                "attribute": agreed_attribute,
-                "correction": rec["annotator_a"].get("correction", ""),
-            }
-        )
-
-    return processed_dataset
-
-
-def resolve_attribute_agreement(rec, task_type):
-    a = rec["annotator_a"]
-    b = rec["annotator_b"]
-
-    if a.get("error") != b.get("error"):
-        return None
-
-    attr_a = a.get("attribute")
-    attr_b = b.get("attribute")
-
-    if not isinstance(attr_a, dict) or not isinstance(attr_b, dict):
-        return None
-
-    if task_type == "attribute":
-        return or_operation(attr_a, attr_b)
-
-    if task_type == "attribute_agreed_multiple":
-        agreed_dict = and_operation(attr_a, attr_b)
-        if sum(list(agreed_dict.values())) >= 2:
-            return agreed_dict
-        return None
-
-    if task_type == "attribute_agreed_multiple_subj":
-        agreed_dict = and_operation(attr_a, attr_b)
-        if sum(list(agreed_dict.values())) >= 2:
-            return agreed_dict
-        return None
-
-    if task_type == "attribute_disagree":
-        agreed_dict_or = or_operation(attr_a, attr_b)
-        agreed_dict_and = and_operation(attr_a, attr_b)
-        intersect_dict = and_operation(agreed_dict_or, agreed_dict_and)
-        if sum(list(intersect_dict.values())) == 0:
-            return agreed_dict_or
-        return None
-
-    return None
-
-
-def build_attribute_dataset(clean_records, task_type):
-    processed_dataset = []
-
-    for rec in clean_records:
-        agreed_attribute = resolve_attribute_agreement(rec, task_type)
-        if agreed_attribute is None:
-            continue
-
-        processed_dataset.append(
+        processed.append(
             {
                 "video_id": rec["video_id"],
                 "id": rec["video_id"],
                 "timestamp": rec["timestamp"],
-                "error": rec["error"],
-                "attribute": agreed_attribute,
-                "transcription": rec["transcript"],
-                "rationale": rec["annotator_a"].get("rationale", ""),
-                "correction": rec["annotator_a"].get("correction", ""),
+                "transcript": rec.get("transcript", ""),
+                "label": error,
+                "error": error,
+                "annotator_a_rationale": rec.get("annotator_a", {}).get("rationale", ""),
+                "annotator_b_rationale": rec.get("annotator_b", {}).get("rationale", ""),
+                "annotator_a_attribute": rec.get("annotator_a", {}).get("attribute"),
+                "annotator_b_attribute": rec.get("annotator_b", {}).get("attribute"),
             }
         )
 
-    return processed_dataset
+    print(f"[INFO] Removed non-binary error labels: {skipped_non_binary}")
+    print_count("after detection label construction", len(processed))
+    return processed
 
 
-def build_rationale_context_correction_dataset(clean_records, task_type):
-    task_dataset_final = []
+def build_attribute_dataset(clean_records):
+    """
+    Construct labels for attribute prediction.
 
-    for rec in clean_records:
-        sample = {
-            "video_id": rec["video_id"],
-            "id": rec["video_id"],
-            "timestamp": rec["timestamp"],
-            "error": rec["error"],
-            "attribute": rec["annotator_a"].get("attribute"),
-            "transcript": rec["transcript"],
-            "rationale": rec["annotator_a"].get("rationale", ""),
-            "correction": rec["annotator_a"].get("correction", ""),
-        }
+    Task meaning:
+    - the segment is already known to be either a social error or social competence
+    - predict the relevant social attribute(s)
 
-        if task_type == "rationale" and len(sample["rationale"]) == 0:
-            continue
-        if task_type == "correction" and not (sample["error"] is True and len(sample["correction"]) > 0):
-            continue
-        if task_type == "context":
-            pass
+    Label construction:
+    - require agreed binary detection label (True or False)
+    - attribute label = OR across annotator attribute dicts
 
-        task_dataset_final.append(sample)
-
-    task_dataset_final_text = []
-    for sample in task_dataset_final:
-        attr = sample.get("attribute")
-        if check_all_false(attr):
-            continue
-
-        random_subset = random.choices(task_dataset_final, k=len(task_dataset_final))
-        others = filter_dicts_without_subdict_tier2(random_subset, attr)
-
-        other_transcript_list = [other["transcript"] for other in others if other["error"] == sample["error"]]
-        other_recovery_list = [other["correction"] for other in others if other["error"] == sample["error"]]
-        other_reason_list = [other["rationale"] for other in others if other["error"] == sample["error"]]
-        other_id_list = [other["id"] for other in others if other["error"] == sample["error"]]
-        other_timestamp_list = [other["timestamp"] for other in others if other["error"] == sample["error"]]
-
-        if task_type == "rationale":
-            other_reason_list, other_id_list, other_timestamp_list = remove_redundant_strings_id_timestamp(
-                other_reason_list, other_id_list, other_timestamp_list
-            )
-
-        if task_type == "context":
-            other_transcript_list, other_id_list, other_timestamp_list = remove_redundant_strings_id_timestamp(
-                other_transcript_list, other_id_list, other_timestamp_list
-            )
-
-        if task_type == "correction":
-            other_recovery_list, other_id_list, other_timestamp_list = remove_redundant_strings_id_timestamp(
-                other_recovery_list, other_id_list, other_timestamp_list
-            )
-
-        if task_type == "rationale" and len(other_reason_list) < 5:
-            continue
-        if task_type == "correction" and len(other_recovery_list) < 5:
-            continue
-        if task_type == "context" and len(other_transcript_list) < 5:
-            continue
-
-        sample["other_reason_list"] = other_reason_list
-        sample["other_recovery_list"] = other_recovery_list
-        sample["other_transcript_list"] = other_transcript_list
-        sample["other_id_list"] = other_id_list
-        sample["other_timestamp_list"] = other_timestamp_list
-
-        task_dataset_final_text.append(sample)
-
-    return task_dataset_final_text
-
-
-def split_speaker_blocks(transcript):
-    if not isinstance(transcript, str) or transcript.strip() == "":
-        return {}
-
-    blocks = transcript.strip().split("\n\n")
-    result = {}
-
-    for block in blocks:
-        lines = [line for line in block.splitlines() if line.strip()]
-        if not lines:
-            continue
-
-        speaker = lines[0].strip()
-        result[speaker] = "\n".join(lines)
-
-    return result
-
-
-def build_pre_post_dataset(clean_records, task_type):
-    task_dataset_final = []
+    Removed if:
+    - error label is not binary
+    - attribute dict is malformed
+    """
+    print("[INFO] Generating task: attribute")
+    processed = []
+    skipped_non_binary = 0
+    skipped_bad_attr = 0
 
     for rec in clean_records:
-        if rec["error"] is not False:
+        error = rec.get("error")
+        if not is_binary_error_label(error):
+            skipped_non_binary += 1
             continue
 
-        speaker_blocks = split_speaker_blocks(rec["transcript"])
-
-        if "User" not in speaker_blocks or "Agent" not in speaker_blocks:
+        attr_a, attr_b = get_attr_pair(rec)
+        if attr_a is None or attr_b is None:
+            skipped_bad_attr += 1
             continue
 
-        sample = {
-            "video_id": rec["video_id"],
-            "id": rec["video_id"],
-            "timestamp": rec["timestamp"],
-            "error": rec["error"],
-            "attribute": rec["annotator_a"].get("attribute"),
-            "transcript": rec["transcript"],
-            "transcript_user": speaker_blocks["User"],
-            "transcript_agent": speaker_blocks["Agent"],
-            "rationale": rec["annotator_a"].get("rationale", ""),
-            "correction": rec["annotator_a"].get("correction", ""),
-        }
-        task_dataset_final.append(sample)
+        merged_attr = or_operation(attr_a, attr_b)
 
-    task_dataset_final_text = []
-    for sample in task_dataset_final:
-        attr = sample.get("attribute")
-        if check_all_false(attr):
+        processed.append(
+            {
+                "video_id": rec["video_id"],
+                "id": rec["video_id"],
+                "timestamp": rec["timestamp"],
+                "transcript": rec.get("transcript", ""),
+                "label": merged_attr,
+                "error": error,
+                "attribute": merged_attr,
+                "annotator_a_attribute": attr_a,
+                "annotator_b_attribute": attr_b,
+                "annotator_a_rationale": rec.get("annotator_a", {}).get("rationale", ""),
+                "annotator_b_rationale": rec.get("annotator_b", {}).get("rationale", ""),
+            }
+        )
+
+    print(f"[INFO] Removed non-binary error labels: {skipped_non_binary}")
+    print_count("after binary-error filtering", len(clean_records) - skipped_non_binary)
+    print(f"[INFO] Removed malformed attribute labels: {skipped_bad_attr}")
+    print_count("after attribute label construction", len(processed))
+    print("[INFO] Attribute label is OR across annotators.")
+    return processed
+
+
+def build_attribute_agreed_multiple_subj_dataset(clean_records):
+    """
+    Construct labels for 'more than one social attribute involved' classification.
+
+    Task meaning:
+    - determine whether more than one social attribute is involved
+
+    Label construction:
+    - require agreed binary detection label
+    - first construct merged attribute dict = OR across annotators
+    - count how many attributes are True
+    - target label:
+        True  -> more than one attribute is True
+        False -> exactly one attribute is True
+
+    Removed if:
+    - error label is not binary
+    - attribute dict is malformed
+    - zero attributes are True (because task is defined as multi-vs-single attribute involvement)
+    """
+    print("[INFO] Generating task: attribute_agreed_multiple_subj")
+    processed = []
+    skipped_non_binary = 0
+    skipped_bad_attr = 0
+    skipped_zero_true = 0
+
+    for rec in clean_records:
+        error = rec.get("error")
+        if not is_binary_error_label(error):
+            skipped_non_binary += 1
             continue
 
-        others = random.choices(task_dataset_final, k=100)
-        other_transcript_agent_list = [other["transcript_agent"] for other in others]
-        other_transcript_user_list = [other["transcript_user"] for other in others]
-        other_id_list = [other["id"] for other in others]
-        other_timestamp_list = [other["timestamp"] for other in others]
-
-        if task_type == "pre":
-            other_transcript_user_list, other_id_list, other_timestamp_list = remove_redundant_strings_id_timestamp(
-                other_transcript_user_list, other_id_list, other_timestamp_list
-            )
-
-        if task_type == "post":
-            other_transcript_agent_list, other_id_list, other_timestamp_list = remove_redundant_strings_id_timestamp(
-                other_transcript_agent_list, other_id_list, other_timestamp_list
-            )
-
-        if task_type == "pre" and len(other_transcript_user_list) < 5:
-            continue
-        if task_type == "post" and len(other_transcript_agent_list) < 5:
+        attr_a, attr_b = get_attr_pair(rec)
+        if attr_a is None or attr_b is None:
+            skipped_bad_attr += 1
             continue
 
-        sample["other_transcript_agent_list"] = other_transcript_agent_list
-        sample["other_transcript_user_list"] = other_transcript_user_list
-        sample["other_id_list"] = other_id_list
-        sample["other_timestamp_list"] = other_timestamp_list
+        merged_attr = or_operation(attr_a, attr_b)
+        num_true = count_true_attributes(merged_attr)
 
-        task_dataset_final_text.append(sample)
+        if num_true == 0:
+            skipped_zero_true += 1
+            continue
 
-    return task_dataset_final_text
+        label = num_true > 1
+
+        processed.append(
+            {
+                "video_id": rec["video_id"],
+                "id": rec["video_id"],
+                "timestamp": rec["timestamp"],
+                "transcript": rec.get("transcript", ""),
+                "label": label,
+                "error": error,
+                "num_true_attributes": num_true,
+                "attribute": merged_attr,
+                "annotator_a_attribute": attr_a,
+                "annotator_b_attribute": attr_b,
+                "annotator_a_rationale": rec.get("annotator_a", {}).get("rationale", ""),
+                "annotator_b_rationale": rec.get("annotator_b", {}).get("rationale", ""),
+            }
+        )
+
+    print(f"[INFO] Removed non-binary error labels: {skipped_non_binary}")
+    print_count("after binary-error filtering", len(clean_records) - skipped_non_binary)
+    print(f"[INFO] Removed malformed attribute labels: {skipped_bad_attr}")
+    print_count("after valid-attribute filtering", len(clean_records) - skipped_non_binary - skipped_bad_attr)
+    print(f"[INFO] Removed zero-attribute samples: {skipped_zero_true}")
+    print_count("after attribute_agreed_multiple_subj label construction", len(processed))
+    print("[INFO] Label=True means >1 true attribute; Label=False means exactly 1 true attribute.")
+    print("[INFO] Attribute basis is OR across annotators.")
+    return processed
+
+
+def attributes_differ(attr1, attr2):
+    """
+    Used to avoid choosing distractors with identical attribute annotations.
+    """
+    return attr1 != attr2
+
+
+def build_rationale_dataset(clean_records, target_error, task_name, num_distractors=5):
+    """
+    Construct labels and distractors for rationale selection.
+
+    Task meaning:
+    - explain why the segment is a social error or a social competence
+
+    Pool restriction:
+    - rationale_error      uses only social error samples (error == True)
+    - rationale_competence uses only social competence samples (error == False)
+
+    Label construction:
+    - require agreed binary detection label equal to target_error
+    - require non-empty rationale
+    - target rationale = annotator A rationale
+    - attribute label basis for filtering = OR across annotators
+
+    Distractor construction:
+    - sample only from the same pool (error-only or competence-only)
+    - use other rationales as distractors
+    - try to avoid identical attribute annotations
+    - deduplicate exact repeated rationale strings
+    - require at least num_distractors distractors
+    """
+    print(f"[INFO] Generating task: {task_name}")
+
+    base_pool = []
+    skipped_non_binary = 0
+    skipped_wrong_error = 0
+    skipped_empty_rationale = 0
+    skipped_bad_attr = 0
+
+    for rec in clean_records:
+        error = rec.get("error")
+        if not is_binary_error_label(error):
+            skipped_non_binary += 1
+            continue
+
+        if error is not target_error:
+            skipped_wrong_error += 1
+            continue
+
+        rationale = rec.get("annotator_a", {}).get("rationale", "")
+        if not has_nonempty_text(rationale):
+            skipped_empty_rationale += 1
+            continue
+
+        attr_a, attr_b = get_attr_pair(rec)
+        if attr_a is None or attr_b is None:
+            skipped_bad_attr += 1
+            continue
+
+        merged_attr = or_operation(attr_a, attr_b)
+
+        base_pool.append(
+            {
+                "video_id": rec["video_id"],
+                "id": rec["video_id"],
+                "timestamp": rec["timestamp"],
+                "transcript": rec.get("transcript", ""),
+                "label": rationale,
+                "rationale": rationale,
+                "error": error,
+                "attribute": merged_attr,
+                "annotator_a_rationale": rationale,
+                "annotator_b_rationale": rec.get("annotator_b", {}).get("rationale", ""),
+                "annotator_a_attribute": attr_a,
+                "annotator_b_attribute": attr_b,
+            }
+        )
+
+    print(f"[INFO] Removed non-binary error labels: {skipped_non_binary}")
+    print_count("after binary-error filtering", len(clean_records) - skipped_non_binary)
+    print(f"[INFO] Removed samples not in target pool", skipped_wrong_error)
+    print_count("after target-pool filtering", len(clean_records) - skipped_non_binary - skipped_wrong_error)
+    print(f"[INFO] Removed empty-rationale samples: {skipped_empty_rationale}")
+    print_count(
+        "after non-empty rationale filtering",
+        len(clean_records) - skipped_non_binary - skipped_wrong_error - skipped_empty_rationale,
+    )
+    print(f"[INFO] Removed malformed attribute labels: {skipped_bad_attr}")
+    print_count("base rationale pool", len(base_pool))
+
+    processed = []
+    removed_too_few_distractors = 0
+
+    for sample in base_pool:
+        candidate_pool = [
+            other for other in base_pool
+            if other["id"] != sample["id"] and attributes_differ(other["attribute"], sample["attribute"])
+        ]
+
+        distractor_texts = [other["rationale"] for other in candidate_pool]
+        distractor_ids = [other["id"] for other in candidate_pool]
+        distractor_timestamps = [other["timestamp"] for other in candidate_pool]
+
+        distractor_texts, distractor_ids, distractor_timestamps = remove_redundant_strings_id_timestamp(
+            distractor_texts, distractor_ids, distractor_timestamps
+        )
+
+        if len(distractor_texts) < num_distractors:
+            removed_too_few_distractors += 1
+            continue
+
+        chosen_idx = list(range(len(distractor_texts)))
+        random.shuffle(chosen_idx)
+        chosen_idx = chosen_idx[:num_distractors]
+
+        sample_out = dict(sample)
+        sample_out["distractor_rationales"] = [distractor_texts[i] for i in chosen_idx]
+        sample_out["distractor_ids"] = [distractor_ids[i] for i in chosen_idx]
+        sample_out["distractor_timestamps"] = [distractor_timestamps[i] for i in chosen_idx]
+
+        processed.append(sample_out)
+
+    print(f"[INFO] Removed samples with too few distractors: {removed_too_few_distractors}")
+    print_count(f"after {task_name} construction", len(processed))
+    return processed
+
+
+def build_correction_dataset(clean_records, num_distractors=5):
+    """
+    Construct labels and distractors for correction generation/selection.
+
+    Task meaning:
+    - correct a social error segment
+
+    Pool restriction:
+    - only social error samples (error == True)
+
+    Label construction:
+    - require non-empty correction text from annotator A
+    - require non-empty rationale as requested
+    - target correction = annotator A correction
+    - attribute basis for filtering = OR across annotators
+
+    Distractor construction:
+    - sample correction distractors only from the social error pool
+    - try to avoid identical attribute annotations
+    - deduplicate exact repeated correction strings
+    - require at least num_distractors distractors
+    """
+    print("[INFO] Generating task: correction")
+
+    base_pool = []
+    skipped_non_true_error = 0
+    skipped_empty_correction = 0
+    skipped_empty_rationale = 0
+    skipped_bad_attr = 0
+
+    for rec in clean_records:
+        if rec.get("error") is not True:
+            skipped_non_true_error += 1
+            continue
+
+        correction = rec.get("annotator_a", {}).get("correction", "")
+        if not has_nonempty_text(correction):
+            skipped_empty_correction += 1
+            continue
+
+        rationale = rec.get("annotator_a", {}).get("rationale", "")
+        if not has_nonempty_text(rationale):
+            skipped_empty_rationale += 1
+            continue
+
+        attr_a, attr_b = get_attr_pair(rec)
+        if attr_a is None or attr_b is None:
+            skipped_bad_attr += 1
+            continue
+
+        merged_attr = or_operation(attr_a, attr_b)
+
+        base_pool.append(
+            {
+                "video_id": rec["video_id"],
+                "id": rec["video_id"],
+                "timestamp": rec["timestamp"],
+                "transcript": rec.get("transcript", ""),
+                "label": correction,
+                "correction": correction,
+                "rationale": rationale,
+                "error": True,
+                "attribute": merged_attr,
+                "annotator_a_correction": correction,
+                "annotator_b_correction": rec.get("annotator_b", {}).get("correction", ""),
+                "annotator_a_rationale": rationale,
+                "annotator_b_rationale": rec.get("annotator_b", {}).get("rationale", ""),
+            }
+        )
+
+    print(f"[INFO] Removed non-error samples: {skipped_non_true_error}")
+    print_count("after social-error pool filtering", len(clean_records) - skipped_non_true_error)
+    print(f"[INFO] Removed empty-correction samples: {skipped_empty_correction}")
+    print_count(
+        "after non-empty correction filtering",
+        len(clean_records) - skipped_non_true_error - skipped_empty_correction,
+    )
+    print(f"[INFO] Removed empty-rationale samples: {skipped_empty_rationale}")
+    print_count(
+        "after non-empty rationale filtering",
+        len(clean_records) - skipped_non_true_error - skipped_empty_correction - skipped_empty_rationale,
+    )
+    print(f"[INFO] Removed malformed attribute labels: {skipped_bad_attr}")
+    print_count("base correction pool", len(base_pool))
+
+    processed = []
+    removed_too_few_distractors = 0
+
+    for sample in base_pool:
+        candidate_pool = [
+            other for other in base_pool
+            if other["id"] != sample["id"] and attributes_differ(other["attribute"], sample["attribute"])
+        ]
+
+        distractor_texts = [other["correction"] for other in candidate_pool]
+        distractor_ids = [other["id"] for other in candidate_pool]
+        distractor_timestamps = [other["timestamp"] for other in candidate_pool]
+
+        distractor_texts, distractor_ids, distractor_timestamps = remove_redundant_strings_id_timestamp(
+            distractor_texts, distractor_ids, distractor_timestamps
+        )
+
+        if len(distractor_texts) < num_distractors:
+            removed_too_few_distractors += 1
+            continue
+
+        chosen_idx = list(range(len(distractor_texts)))
+        random.shuffle(chosen_idx)
+        chosen_idx = chosen_idx[:num_distractors]
+
+        sample_out = dict(sample)
+        sample_out["distractor_corrections"] = [distractor_texts[i] for i in chosen_idx]
+        sample_out["distractor_ids"] = [distractor_ids[i] for i in chosen_idx]
+        sample_out["distractor_timestamps"] = [distractor_timestamps[i] for i in chosen_idx]
+
+        processed.append(sample_out)
+
+    print(f"[INFO] Removed samples with too few distractors: {removed_too_few_distractors}")
+    print_count("after correction construction", len(processed))
+    return processed
 
 
 def main():
     parser = argparse.ArgumentParser(description="Generate task-specific pickle files from cleaned detection-agreed JSON.")
     parser.add_argument("--clean_json_path", type=str, required=True)
-    parser.add_argument("--task_type", type=str, required=True)
-    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--task_type", type=str, required=True, choices=sorted(SUPPORTED_TASKS))
     parser.add_argument("--output_dir", type=str, default="./clean_preprocess/output_datasets")
     parser.add_argument(
         "--remove_no_transcript",
@@ -366,12 +555,20 @@ def main():
     parser.add_argument(
         "--exclude_video_ids_json",
         type=str,
-        default=None,
-        help="Optional JSON file containing video_ids to exclude. Useful for excluding no-transcript sample filenames.",
+        required=True,
+        help="Mandatory JSON file containing video_ids to exclude.",
     )
+    parser.add_argument(
+        "--num_distractors",
+        type=int,
+        default=5,
+        help="Number of distractors for rationale/correction tasks.",
+    )
+    parser.add_argument("--seed", type=int, default=0)
 
     args = parser.parse_args()
     random.seed(args.seed)
+
     os.makedirs(args.output_dir, exist_ok=True)
 
     clean_records = load_clean_records(args.clean_json_path)
@@ -383,25 +580,36 @@ def main():
         blocked_video_ids=blocked_video_ids,
     )
 
-    if args.task_type in ["debug", "detection"]:
+    if args.task_type == "detection":
         processed_dataset = build_detection_dataset(clean_records)
 
-    elif args.task_type == "detection_error_only":
-        processed_dataset = build_detection_error_only_dataset(clean_records)
+    elif args.task_type == "attribute":
+        processed_dataset = build_attribute_dataset(clean_records)
 
-    elif args.task_type in [
-        "attribute",
-        "attribute_disagree",
-        "attribute_agreed_multiple",
-        "attribute_agreed_multiple_subj",
-    ]:
-        processed_dataset = build_attribute_dataset(clean_records, args.task_type)
+    elif args.task_type == "attribute_agreed_multiple_subj":
+        processed_dataset = build_attribute_agreed_multiple_subj_dataset(clean_records)
 
-    elif args.task_type in ["rationale", "context", "correction"]:
-        processed_dataset = build_rationale_context_correction_dataset(clean_records, args.task_type)
+    elif args.task_type == "rationale_error":
+        processed_dataset = build_rationale_dataset(
+            clean_records,
+            target_error=True,
+            task_name="rationale_error",
+            num_distractors=args.num_distractors,
+        )
 
-    elif args.task_type in ["pre", "post"]:
-        processed_dataset = build_pre_post_dataset(clean_records, args.task_type)
+    elif args.task_type == "rationale_competence":
+        processed_dataset = build_rationale_dataset(
+            clean_records,
+            target_error=False,
+            task_name="rationale_competence",
+            num_distractors=args.num_distractors,
+        )
+
+    elif args.task_type == "correction":
+        processed_dataset = build_correction_dataset(
+            clean_records,
+            num_distractors=args.num_distractors,
+        )
 
     else:
         raise ValueError(f"Unsupported task_type: {args.task_type}")
