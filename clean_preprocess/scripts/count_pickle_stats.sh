@@ -1,16 +1,10 @@
 TASK_TYPES=(
-  "debug"
   "detection"
-  "detection_error_only"
   "attribute"
-  "attribute_disagree"
-  "attribute_agreed_multiple"
   "attribute_agreed_multiple_subj"
-  "rationale"
-  "context"
+  "rationale_error"
+  "rationale_competence"
   "correction"
-  "pre"
-  "post"
 )
 
 for task in "${TASK_TYPES[@]}"; do

@@ -6,18 +6,12 @@ from collections import defaultdict
 
 
 KNOWN_TASK_TYPES = [
-    "debug",
-    "detection",
-    "detection_error_only",
-    "attribute",
-    "attribute_disagree",
-    "attribute_agreed_multiple",
-    "attribute_agreed_multiple_subj",
-    "rationale",
-    "context",
-    "correction",
-    "pre",
-    "post",
+  "detection",
+  "attribute",
+  "attribute_agreed_multiple_subj",
+  "rationale_error",
+  "rationale_competence",
+  "correction"
 ]
 
 
