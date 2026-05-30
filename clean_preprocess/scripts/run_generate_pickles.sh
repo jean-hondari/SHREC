@@ -3,7 +3,7 @@
 
 
 TASK_TYPES=(
-  "detection"
+  "error_vs_competence"
   "attribute"
   "attribute_agreed_multiple_subj"
   "rationale_error"

@@ -9,7 +9,7 @@ from utils_exact import or_operation, remove_redundant_strings_id_timestamp
 
 
 SUPPORTED_TASKS = {
-    "detection",
+    "error_vs_competence",
     "attribute",
     "attribute_agreed_multiple_subj",
     "rationale_error",
@@ -116,13 +116,13 @@ def filter_clean_records(clean_records, remove_no_transcript, blocked_video_ids)
     return filtered
 
 
-def build_detection_dataset(clean_records):
+def build_error_vs_competence_dataset(clean_records):
     """
-    Construct labels for binary error detection.
+    Construct labels for binary error_vs_competence. This task excludes None and evaluates only error vs competence.
 
     Label construction:
     - target label = rec["error"]
-    - keep only samples whose agreed detection label is exactly True or False
+    - keep only samples whose agreed error_vs_competence label is exactly True or False
     - these are the segments where annotators already agreed on error status
 
     Included in output:
@@ -130,7 +130,7 @@ def build_detection_dataset(clean_records):
     - binary error label
     - annotator metadata for inspection
     """
-    print("[INFO] Generating task: detection")
+    print("[INFO] Generating task: error_vs_competence")
     processed = []
     skipped_non_binary = 0
 
@@ -157,7 +157,7 @@ def build_detection_dataset(clean_records):
         )
 
     print(f"[INFO] Removed non-binary error labels: {skipped_non_binary}")
-    print_count("after detection label construction", len(processed))
+    print_count("after error_vs_competence label construction", len(processed))
     return processed
 
 
@@ -170,7 +170,7 @@ def build_attribute_dataset(clean_records):
     - predict the relevant social attribute(s)
 
     Label construction:
-    - require agreed binary detection label (True or False)
+    - require agreed binary error_vs_competence label (True or False)
     - attribute label = OR across annotator attribute dicts
 
     Removed if:
@@ -227,7 +227,7 @@ def build_attribute_agreed_multiple_subj_dataset(clean_records):
     - determine whether more than one social attribute is involved
 
     Label construction:
-    - require agreed binary detection label
+    - require agreed binary error_vs_competence label
     - first construct merged attribute dict = OR across annotators
     - count how many attributes are True
     - target label:
@@ -543,7 +543,7 @@ def build_correction_dataset(clean_records, num_distractors=5):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate task-specific pickle files from cleaned detection-agreed JSON.")
+    parser = argparse.ArgumentParser(description="Generate task-specific pickle files from cleaned error_vs_competence agreed JSON.")
     parser.add_argument("--clean_json_path", type=str, required=True)
     parser.add_argument("--task_type", type=str, required=True, choices=sorted(SUPPORTED_TASKS))
     parser.add_argument("--output_dir", type=str, default="./clean_preprocess/output_datasets")
@@ -561,7 +561,7 @@ def main():
     parser.add_argument(
         "--num_distractors",
         type=int,
-        default=5,
+        default=4,
         help="Number of distractors for rationale/correction tasks.",
     )
     parser.add_argument("--seed", type=int, default=0)
@@ -580,8 +580,8 @@ def main():
         blocked_video_ids=blocked_video_ids,
     )
 
-    if args.task_type == "detection":
-        processed_dataset = build_detection_dataset(clean_records)
+    if args.task_type == "error_vs_competence":
+        processed_dataset = build_error_vs_competence_dataset(clean_records)
 
     elif args.task_type == "attribute":
         processed_dataset = build_attribute_dataset(clean_records)
