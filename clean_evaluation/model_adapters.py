@@ -85,10 +85,9 @@ def call_internvl_with_vlmeval(prompt: str, transcript: str, image_paths: List[s
     if not image_paths:
         raise ValueError("InternVL requires at least one image path.")
 
-    model = get_internvl_model()
-    query = f"{prompt}\n\nConversation History:\n{transcript}"
 
-    # This is the expected call style used by many vlmeval wrappers.
+    model = get_internvl_model()
+    query = prompt
     return model.generate(image_paths, query)
 
 

@@ -4,12 +4,12 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
-TASK_TYPE="${TASK_TYPE:-/mnt/ssd1/SHREC/SHREC/clean_preprocess/clean_preprocess/output_datasets/nt_shrec_wellness_dorm_detection_agreed_cleaned_intervals_error_vs_competence.pickle}"
+TASK_TYPE="${TASK_TYPE:-nt_shrec_wellness_dorm_detection_agreed_cleaned_intervals_error_vs_competence.pickle}"
 DATA_PATH="${DATA_PATH:-/mnt/ssd1/SHREC/SHREC/clean_preprocess/clean_preprocess/output_datasets}"
 IMAGES_DIR="${IMAGES_DIR:-/mnt/ssd1/SHREC/shrec_data/shrec_wellness_dorm}"
 CSV_PATH="${CSV_PATH:-/mnt/ssd1/SHREC/shrec_data/shrec_wellness_dorm.reprocessed.csv}"
-OUTPUT_DIR="${OUTPUT_DIR:-./clean_evaluation/output}"
-LOG_DIR="${LOG_DIR:-./clean_evaluation/logs}"
+OUTPUT_DIR="${OUTPUT_DIR:-/mnt/ssd1/SHREC/SHREC/clean_evaluation/output}"
+LOG_DIR="${LOG_DIR:-/mnt/ssd1/SHREC/SHREC/clean_evaluation/logs}"
 
 mkdir -p "$OUTPUT_DIR"
 mkdir -p "$LOG_DIR"
