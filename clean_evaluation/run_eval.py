@@ -205,8 +205,8 @@ def make_run_config(args, interval_sec: float, model_family: str, output_dir: Pa
         "interval_sec": interval_sec,
         "max_frames": args.max_frames,
         "data_path": str(Path(args.data_path).resolve()),
-        "images_dir": str(Path(args.images_dir).resolve()),
-        "csv_path": str(Path(args.csv_path).resolve()),
+        "images_dir": str(Path(args.images_dir).resolve()) if args.images_dir else None,
+        "csv_path": str(Path(args.csv_path).resolve()) if args.csv_path else None,
         "output_dir": str(output_dir.resolve()),
     }
 
@@ -342,11 +342,17 @@ def normalize_attribute_ground_truth(label) -> Optional[str]:
     return str(label)
 
 
-def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str, rng: random.Random):
+def build_prompt_and_ground_truth(
+        task_type: str,
+        sample: dict,
+        transcript: str,
+        rng: random.Random,
+        use_images: bool,
+    ):
     lower = task_type.lower()
 
     if "error_vs_competence" in lower:
-        prompt = build_error_vs_competence_prompt(task_type, transcript)
+        prompt = build_error_vs_competence_prompt(task_type, transcript, use_images=use_images)
         gt_raw = sample.get("error")
         if gt_raw is True:
             ground_truth_choice = "B"
@@ -366,7 +372,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
         }
 
     if "attribute" in lower:
-        prompt = build_attribute_prompt(task_type, transcript, sample)
+        prompt = build_attribute_prompt(task_type, transcript, sample, use_images=use_images)
         gt_raw = sample.get("attribute")
         gt_choice = normalize_attribute_ground_truth(gt_raw)
 
@@ -394,7 +400,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
             rng=rng,
             total_choices=5,
         )
-        prompt = build_rationale_error_prompt(task_type, transcript, displayed_choices)
+        prompt = build_rationale_error_prompt(task_type, transcript, displayed_choices, use_images=use_images)
 
         return {
             "prompt": prompt,
@@ -414,7 +420,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
             rng=rng,
             total_choices=5,
         )
-        prompt = build_rationale_competence_prompt(task_type, transcript, displayed_choices)
+        prompt = build_rationale_competence_prompt(task_type, transcript, displayed_choices, use_images=use_images )
 
         return {
             "prompt": prompt,
@@ -434,7 +440,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
             rng=rng,
             total_choices=5,
         )
-        prompt = build_correction_prompt(task_type, transcript, displayed_choices)
+        prompt = build_correction_prompt(task_type, transcript, displayed_choices, use_images=use_images)
 
         return {
             "prompt": prompt,
@@ -525,8 +531,8 @@ def main():
     parser.add_argument("--task_type", type=str, required=True, help="pickle filename from clean_preprocess/output_datasets")
     parser.add_argument("--model", type=str, required=True, choices=["gpt-4o-mini", "gpt-4o-mini-vision", "internvl", "llama"])
     parser.add_argument("--data_path", type=str, default="./clean_preprocess/output_datasets")
-    parser.add_argument("--images_dir", type=str, required=True)
-    parser.add_argument("--csv_path", type=str, required=True)
+    parser.add_argument("--images_dir", type=str, default=None)
+    parser.add_argument("--csv_path", type=str, default=None)
     parser.add_argument("--output_dir", type=str, default=None)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--temperature", type=float, default=0.0)
@@ -542,15 +548,24 @@ def main():
         random.shuffle(dataset)
 
     model_family = normalize_model_family(args.model)
-    video_to_fps = load_video_to_fps(args.csv_path)
+    use_images = "vlm" in model_family
 
-    print_dataset_frame_summary(
-        dataset=dataset,
-        images_dir=args.images_dir,
-        video_to_fps=video_to_fps,
-    )
+    video_to_fps = {}
+    if use_images:
+        if not args.images_dir:
+            raise ValueError("--images_dir is required for VLM models.")
+        if not args.csv_path:
+            raise ValueError("--csv_path is required for VLM models.")
 
-    interval_sec = prompt_interval_seconds()
+        video_to_fps = load_video_to_fps(args.csv_path)
+
+        print_dataset_frame_summary(
+            dataset=dataset,
+            images_dir=args.images_dir,
+            video_to_fps=video_to_fps,
+        )
+
+    interval_sec = prompt_interval_seconds() if use_images else 0.0
 
     output_root = resolve_output_root(args.output_dir)
     output_dir = build_structured_output_dir(output_root, args.task_type, args.model)
@@ -559,12 +574,15 @@ def main():
     run_config = make_run_config(args, interval_sec, model_family, output_dir)
 
     print(f"[INFO] Input data_path: {Path(args.data_path).resolve()}")
-    print(f"[INFO] Images dir: {Path(args.images_dir).resolve()}")
-    print(f"[INFO] CSV path: {Path(args.csv_path).resolve()}")
+    if args.images_dir:
+        print(f"[INFO] Images dir: {Path(args.images_dir).resolve()}")
+    if args.csv_path:
+        print(f"[INFO] CSV path: {Path(args.csv_path).resolve()}")
     print(f"[INFO] Output root: {output_root}")
     print(f"[INFO] Structured output dir: {output_dir}")
-    print(f"[INFO] Interval seconds: {interval_sec}")
-    print(f"[INFO] Max frames: {args.max_frames}")
+    if use_images:
+        print(f"[INFO] Interval seconds: {interval_sec}")
+        print(f"[INFO] Max frames: {args.max_frames}")
 
     output_path = choose_resume_or_new(output_dir, run_config)
     print(f"[INFO] Output file: {output_path}")
@@ -615,6 +633,7 @@ def main():
             sample=sample,
             transcript=transcript,
             rng=rng,
+            use_images=use_images,
         )
 
         prompt = task_payload["prompt"]
@@ -624,7 +643,7 @@ def main():
 
         image_paths = []
         frame_meta = None
-        if "vlm" in model_family:
+        if use_images:
             image_paths, frame_meta = build_image_paths_for_sample(
                 sample=sample,
                 images_dir=args.images_dir,
@@ -637,11 +656,10 @@ def main():
             model_name=args.model,
             prompt=prompt,
             transcript=transcript,
-            image_paths=image_paths if "vlm" in model_family else [],
+            image_paths=image_paths if use_images else [],
             temperature=args.temperature,
             seed=args.seed,
         )
-
         answer_choice = extract_answer_choice(args.task_type, response)
 
         result_item = {
@@ -657,8 +675,8 @@ def main():
             "max_frames": args.max_frames,
             "prompt": prompt,
             "transcript_used": transcript,
-            "image_paths_used": image_paths if "vlm" in model_family else [],
-            "num_frames_used": len(image_paths) if "vlm" in model_family else 0,
+            "image_paths_used": image_paths if use_images else [],
+            "num_frames_used": len(image_paths) if use_images else 0,
             "frame_meta": frame_meta,
             "presented_choices": presented_choices,
             "ground_truth_label": ground_truth_label,

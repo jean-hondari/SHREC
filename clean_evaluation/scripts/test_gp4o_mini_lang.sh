@@ -103,8 +103,6 @@ for dataset in "${DATASETS[@]}"; do
       --task_type "$TASK_TYPE" \
       --model gpt-4o-mini \
       --data_path "$DATA_PATH" \
-      --images_dir "$IMAGES_DIR" \
-      --csv_path "$CSV_PATH" \
       --output_dir "$OUTPUT_DIR" \
       --seed 0 \
       --temperature 0.0 \

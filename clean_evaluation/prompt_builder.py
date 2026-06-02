@@ -18,12 +18,8 @@ def build_task_prefix(task_type: str) -> str:
     )
 
 
-def build_inputs_label(task_type: str) -> str:
-    # In this clean evaluation pipeline, prompts may be used for VLMs with images
-    # and for text-only models with transcript-only context.
-    # Keep the original repo wording style.
-    return "Images and Conversation History"
-
+def build_inputs_label(use_images: bool) -> str:
+    return "Images and Conversation History" if use_images else "Conversation History"
 
 def infer_social_label(sample: dict) -> str:
     error_value = sample.get("error")
@@ -41,9 +37,9 @@ def _build_choice_block(choices: List[str], heading: str) -> str:
     return "\n".join(lines)
 
 
-def build_error_vs_competence_prompt(task_type: str, transcript: str) -> str:
+def build_error_vs_competence_prompt(task_type: str, transcript: str, use_images: bool) -> str:
     prefix = build_task_prefix(task_type)
-    inputs = build_inputs_label(task_type)
+    inputs = build_inputs_label(use_images)
 
     task = (
         "Now, given the {} between social agent (Jibo) and a participant, "
@@ -78,9 +74,9 @@ def build_error_vs_competence_prompt(task_type: str, transcript: str) -> str:
     return prefix + task + "\n\n" + definitions + answer_choices + context_prompt + example_answer
 
 
-def build_attribute_prompt(task_type: str, transcript: str, sample: dict) -> str:
+def build_attribute_prompt(task_type: str, transcript: str, sample: dict, use_images: bool) -> str:
     prefix = build_task_prefix(task_type)
-    inputs = build_inputs_label(task_type)
+    inputs = build_inputs_label(use_images)
     social_label = infer_social_label(sample)
 
     task = (
@@ -120,9 +116,9 @@ def build_attribute_prompt(task_type: str, transcript: str, sample: dict) -> str
     return prefix + task + "\n\n" + definitions + answer_choices + context_prompt + example_answer
 
 
-def build_rationale_error_prompt(task_type: str, transcript: str, choices: List[str]) -> str:
+def build_rationale_error_prompt(task_type: str, transcript: str, choices: List[str], use_images: bool) -> str:
     prefix = build_task_prefix(task_type)
-    inputs = build_inputs_label(task_type)
+    inputs = build_inputs_label(use_images)
     reasons_block = _build_choice_block(choices, "Choose from the following reasons")
 
     task = (
@@ -156,9 +152,9 @@ def build_rationale_error_prompt(task_type: str, transcript: str, choices: List[
     )
 
 
-def build_rationale_competence_prompt(task_type: str, transcript: str, choices: List[str]) -> str:
+def build_rationale_competence_prompt(task_type: str, transcript: str, choices: List[str], use_images: bool) -> str:
     prefix = build_task_prefix(task_type)
-    inputs = build_inputs_label(task_type)
+    inputs = build_inputs_label(use_images)
     reasons_block = _build_choice_block(choices, "Choose from the following reasons")
 
     task = (
@@ -193,9 +189,9 @@ def build_rationale_competence_prompt(task_type: str, transcript: str, choices: 
     )
 
 
-def build_correction_prompt(task_type: str, transcript: str, choices: List[str]) -> str:
+def build_correction_prompt(task_type: str, transcript: str, choices: List[str], use_images: bool) -> str:
     prefix = build_task_prefix(task_type)
-    inputs = build_inputs_label(task_type)
+    inputs = build_inputs_label(use_images)
     behaviors_block = _build_choice_block(choices, "Choose from the following behaviors")
 
     task = (
