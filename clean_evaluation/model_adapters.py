@@ -29,19 +29,32 @@ def normalize_model_family(model_name: str) -> str:
     raise ValueError(f"Unsupported model: {model_name}")
 
 
+def _merge_lang_message(prompt: str, transcript: str) -> str:
+    transcript = (transcript or "").strip()
+    prompt = (prompt or "").strip()
+    if transcript:
+        return prompt if "Conversation History:" in prompt else f"{prompt}\n\nConversation History:\n{transcript}"
+    return prompt
+
+
 def call_openai_llm(prompt: str, transcript: str, temperature: float, seed: Optional[int]) -> str:
     client = openai.OpenAI()
+    merged_message = _merge_lang_message(prompt, transcript)
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": transcript},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": merged_message}
+                ],
+            }
         ],
         temperature=temperature,
         seed=seed,
     )
     return response.choices[0].message.content
-
 
 def call_openai_vlm(prompt: str, transcript: str, image_paths: List[str], temperature: float, seed: Optional[int]) -> str:
     import base64
@@ -50,14 +63,22 @@ def call_openai_vlm(prompt: str, transcript: str, image_paths: List[str], temper
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
 
-    content = [{"type": "text", "text": f"{prompt}\n\nConversation History:\n{transcript}"}]
-    for path in image_paths:
-        content.append(
+    merged_message = _merge_lang_message(prompt, transcript)
+
+    content = [
+        {"type": "text", "text": "These are the frames from the video."},
+        *[
             {
                 "type": "image_url",
-                "image_url": {"url": f"data:image/png;base64,{encode_image(path)}"},
+                "image_url": {
+                    "url": f"data:image/jpg;base64,{encode_image(path)}",
+                    "detail": "low",
+                },
             }
-        )
+            for path in image_paths
+        ],
+        {"type": "text", "text": merged_message},
+    ]
 
     client = openai.OpenAI()
     response = client.chat.completions.create(
