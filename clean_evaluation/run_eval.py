@@ -12,12 +12,8 @@ from tqdm import tqdm
 
 from answer_extraction import extract_answer_choice
 from frame_sampling import (
-    analyze_interval_frames,
-    build_sample_index_to_paths,
-    group_irregular_examples,
-    print_frame_analysis,
-    prompt_interval_seconds,
-    summarize_frame_analysis,
+    get_sampled_interval_frames,
+    load_interval_frame_paths_from_folder,
 )
 from model_adapters import normalize_model_family, run_model
 from path_utils import build_structured_output_dir, resolve_output_root
@@ -28,7 +24,135 @@ from prompt_builder import (
     build_rationale_competence_prompt,
     build_rationale_error_prompt,
 )
+def count_interval_frames_in_folder(
+    sample: dict,
+    images_dir: str,
+    video_to_fps: Dict[str, float],
+) -> Tuple[int, dict]:
+    video_id = str(sample.get("video_id", ""))
+    timestamp = sample.get("timestamp", {}) or {}
+    start_sec = timestamp.get("start")
+    end_sec = timestamp.get("end")
+    fps = video_to_fps.get(video_id)
 
+    meta = {
+        "video_id": video_id,
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "fps": fps,
+    }
+
+    if not video_id:
+        meta["status"] = "missing_video_id"
+        return 0, meta
+
+    if start_sec is None or end_sec is None:
+        meta["status"] = "missing_timestamp"
+        return 0, meta
+
+    if fps is None or fps <= 0:
+        meta["status"] = "invalid_fps"
+        return 0, meta
+
+    interval_frames = load_interval_frame_paths_from_folder(
+        images_dir=images_dir,
+        video_id=video_id,
+        start_sec=float(start_sec),
+        end_sec=float(end_sec),
+        fps=float(fps),
+    )
+
+    meta["status"] = "ok" if interval_frames else "no_frames_in_interval"
+    meta["num_interval_frames"] = len(interval_frames)
+    return len(interval_frames), meta
+
+
+def estimate_interval_frames_at_1fps(sample: dict) -> int:
+    timestamp = sample.get("timestamp", {}) or {}
+    start_sec = timestamp.get("start")
+    end_sec = timestamp.get("end")
+
+    if start_sec is None or end_sec is None:
+        return 0
+
+    start_sec = float(start_sec)
+    end_sec = float(end_sec)
+
+    if end_sec < start_sec:
+        return 0
+
+    start_frame_1fps = int(start_sec)
+    end_frame_1fps = int(end_sec)
+
+    return max(1, end_frame_1fps - start_frame_1fps + 1)
+
+
+def print_dataset_frame_summary(
+    dataset: List[dict],
+    images_dir: str,
+    video_to_fps: Dict[str, float],
+) -> None:
+    raw_counts = []
+    one_fps_counts = []
+    zero_count = 0
+    bad_examples = []
+
+    for i, sample in enumerate(dataset):
+        raw_count, meta = count_interval_frames_in_folder(
+            sample=sample,
+            images_dir=images_dir,
+            video_to_fps=video_to_fps,
+        )
+        one_fps_count = estimate_interval_frames_at_1fps(sample)
+
+        raw_counts.append(raw_count)
+        one_fps_counts.append(one_fps_count)
+
+        if raw_count == 0:
+            zero_count += 1
+            if len(bad_examples) < 10:
+                bad_examples.append(
+                    {
+                        "sample_index": i,
+                        "video_id": meta.get("video_id"),
+                        "start_sec": meta.get("start_sec"),
+                        "end_sec": meta.get("end_sec"),
+                        "fps": meta.get("fps"),
+                        "status": meta.get("status"),
+                    }
+                )
+
+    if raw_counts:
+        raw_min = min(raw_counts)
+        raw_max = max(raw_counts)
+        raw_avg = sum(raw_counts) / len(raw_counts)
+    else:
+        raw_min = raw_max = raw_avg = 0
+
+    if one_fps_counts:
+        one_fps_min = min(one_fps_counts)
+        one_fps_max = max(one_fps_counts)
+        one_fps_avg = sum(one_fps_counts) / len(one_fps_counts)
+    else:
+        one_fps_min = one_fps_max = one_fps_avg = 0
+
+    print("\n[Frame interval summary]")
+    print(f"- total samples: {len(dataset)}")
+    print(f"- raw interval frames (annotation fps): min={raw_min}, max={raw_max}, avg={raw_avg:.2f}")
+    print(f"- 1 fps equivalent interval frames: min={one_fps_min}, max={one_fps_max}, avg={one_fps_avg:.2f}")
+    print(f"- zero-frame intervals: {zero_count}")
+
+    if bad_examples:
+        print("\n[Examples with zero frames in interval]")
+        for ex in bad_examples:
+            print(
+                f"- sample_index={ex['sample_index']} "
+                f"video_id={ex['video_id']} "
+                f"start={ex['start_sec']} "
+                f"end={ex['end_sec']} "
+                f"fps={ex['fps']} "
+                f"status={ex['status']}"
+            )
 
 def load_dataset(data_path: str, task_type: str) -> List[dict]:
     dataset_path = os.path.join(data_path, task_type)
@@ -42,8 +166,8 @@ def load_video_to_fps(csv_path: str) -> Dict[str, float]:
     for _, row in df.iterrows():
         video_id = str(row.get("file_name", row.get("video_id", "")))
         fps = row.get("framerate", None)
-        if video_id:
-            mapping[video_id] = fps
+        if video_id and pd.notna(fps):
+            mapping[video_id] = float(fps)
     return mapping
 
 
@@ -79,6 +203,7 @@ def make_run_config(args, interval_sec: float, model_family: str, output_dir: Pa
         "seed": args.seed,
         "temperature": args.temperature,
         "interval_sec": interval_sec,
+        "max_frames": args.max_frames,
         "data_path": str(Path(args.data_path).resolve()),
         "images_dir": str(Path(args.images_dir).resolve()),
         "csv_path": str(Path(args.csv_path).resolve()),
@@ -87,7 +212,7 @@ def make_run_config(args, interval_sec: float, model_family: str, output_dir: Pa
 
 
 def run_config_matches(existing: dict, current: dict) -> bool:
-    keys = ["task_type", "model", "model_family", "seed", "temperature", "interval_sec"]
+    keys = ["task_type", "model", "model_family", "seed", "temperature", "interval_sec", "max_frames"]
     return all(existing.get(k) == current.get(k) for k in keys)
 
 
@@ -98,6 +223,7 @@ def default_output_path(output_dir: Path, config: dict) -> Path:
         f"__seed{config['seed']}"
         f"__temp{config['temperature']}"
         f"__interval{config['interval_sec']}"
+        f"__maxframes{config['max_frames']}"
     )
     return output_dir / f"{stem}.json"
 
@@ -177,11 +303,6 @@ def shuffle_single_correct_choices(
     rng: random.Random,
     total_choices: int = 5,
 ) -> Tuple[List[str], str]:
-    """
-    Returns:
-      displayed_choices: list[str]
-      ground_truth_choice: '(k)'
-    """
     distractors = [x for x in distractors if x is not None and str(x).strip()]
     deduped = []
     seen = set()
@@ -204,10 +325,6 @@ def shuffle_single_correct_choices(
 
 
 def normalize_attribute_ground_truth(label) -> Optional[str]:
-    """
-    Keep this lightweight: convert dict/list into a canonical comma-separated choice string.
-    No correctness scoring yet; this is just stored metadata.
-    """
     if label is None:
         return None
 
@@ -270,7 +387,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
 
     if "rationale_error" in lower:
         correct_text = sample.get("rationale")
-        distractors = list(sample.get("other_reason_list", []))
+        distractors = list(sample.get("distractor_rationales", []))
         displayed_choices, ground_truth_choice = shuffle_single_correct_choices(
             distractors=distractors,
             correct_text=correct_text,
@@ -290,7 +407,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
 
     if "rationale_competence" in lower:
         correct_text = sample.get("rationale")
-        distractors = list(sample.get("other_reason_list", []))
+        distractors = list(sample.get("distractor_rationales", []))
         displayed_choices, ground_truth_choice = shuffle_single_correct_choices(
             distractors=distractors,
             correct_text=correct_text,
@@ -310,7 +427,7 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
 
     if "correction" in lower:
         correct_text = sample.get("correction")
-        distractors = list(sample.get("other_recovery_list", []))
+        distractors = list(sample.get("distractor_corrections", []))
         displayed_choices, ground_truth_choice = shuffle_single_correct_choices(
             distractors=distractors,
             correct_text=correct_text,
@@ -328,7 +445,6 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
             },
         }
 
-    # fallback
     prompt = f"Conversation History:\n{transcript}"
     return {
         "prompt": prompt,
@@ -338,8 +454,74 @@ def build_prompt_and_ground_truth(task_type: str, sample: dict, transcript: str,
     }
 
 
+def prompt_interval_seconds() -> float:
+    raw = input("Enter frame sampling interval in seconds (e.g. 1.0): ").strip()
+    if not raw:
+        return 1.0
+    try:
+        value = float(raw)
+        if value <= 0:
+            return 1.0
+        return value
+    except ValueError:
+        return 1.0
+
+
+def build_image_paths_for_sample(
+    sample: dict,
+    images_dir: str,
+    video_to_fps: Dict[str, float],
+    interval_sec: float,
+    max_frames: int,
+) -> Tuple[List[str], dict]:
+    video_id = str(sample.get("video_id", ""))
+    timestamp = sample.get("timestamp", {}) or {}
+    start_sec = timestamp.get("start")
+    end_sec = timestamp.get("end")
+    fps = video_to_fps.get(video_id)
+
+    meta = {
+        "video_id": video_id,
+        "start_sec": start_sec,
+        "end_sec": end_sec,
+        "fps": fps,
+        "interval_sec": interval_sec,
+        "max_frames": max_frames,
+    }
+
+    if not video_id:
+        meta["frame_status"] = "missing_video_id"
+        return [], meta
+
+    if start_sec is None or end_sec is None:
+        meta["frame_status"] = "missing_timestamp"
+        return [], meta
+
+    if fps is None or fps <= 0:
+        meta["frame_status"] = "invalid_fps"
+        return [], meta
+
+    duration = max(0.0, float(end_sec) - float(start_sec))
+    estimated_from_interval = max(1, int(duration / interval_sec)) if interval_sec > 0 else max_frames
+    target_samples = max(1, min(max_frames, estimated_from_interval if estimated_from_interval > 0 else 1))
+
+    image_paths = get_sampled_interval_frames(
+        images_dir=images_dir,
+        video_id=video_id,
+        start_sec=float(start_sec),
+        end_sec=float(end_sec),
+        fps=float(fps),
+        max_samples=target_samples,
+    )
+
+    meta["frame_status"] = "ok" if image_paths else "no_frames_in_interval"
+    meta["target_samples"] = target_samples
+    meta["num_frames_selected"] = len(image_paths)
+    return image_paths, meta
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Resumable evaluation runner with frame interval sampling")
+    parser = argparse.ArgumentParser(description="Resumable evaluation runner using annotation interval frame loading")
     parser.add_argument("--task_type", type=str, required=True, help="pickle filename from clean_preprocess/output_datasets")
     parser.add_argument("--model", type=str, required=True, choices=["gpt-4o-mini", "gpt-4o-mini-vision", "internvl", "llama"])
     parser.add_argument("--data_path", type=str, default="./clean_preprocess/output_datasets")
@@ -349,6 +531,7 @@ def main():
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--shuffle", action="store_true")
+    parser.add_argument("--max_frames", type=int, default=100)
     args = parser.parse_args()
 
     random.seed(args.seed)
@@ -361,32 +544,13 @@ def main():
     model_family = normalize_model_family(args.model)
     video_to_fps = load_video_to_fps(args.csv_path)
 
-    infos = analyze_interval_frames(
+    print_dataset_frame_summary(
         dataset=dataset,
         images_dir=args.images_dir,
         video_to_fps=video_to_fps,
     )
-    summary = summarize_frame_analysis(infos)
-    print_frame_analysis(summary)
-
-    irregular_infos = [x for x in infos if not x.regular_interval]
-    if irregular_infos:
-        grouped = group_irregular_examples(irregular_infos)
-        print("\n[WARNING] Irregular frame intervals detected.")
-        for reason, examples in grouped.items():
-            print(f"- {reason}: {len(examples)} example(s) shown")
-            for ex in examples:
-                print(
-                    f"  sample_index={ex['sample_index']} "
-                    f"video_id={ex['video_id']} "
-                    f"num_frames={ex['num_frames']} "
-                    f"min_delta_frames={ex['min_delta_frames']} "
-                    f"max_delta_frames={ex['max_delta_frames']}"
-                )
-        print("\nProceeding anyway, but sampling will be based on actual frame timestamps derived from filename/fps.")
 
     interval_sec = prompt_interval_seconds()
-    sample_index_to_paths = build_sample_index_to_paths(infos, interval_sec)
 
     output_root = resolve_output_root(args.output_dir)
     output_dir = build_structured_output_dir(output_root, args.task_type, args.model)
@@ -395,8 +559,12 @@ def main():
     run_config = make_run_config(args, interval_sec, model_family, output_dir)
 
     print(f"[INFO] Input data_path: {Path(args.data_path).resolve()}")
+    print(f"[INFO] Images dir: {Path(args.images_dir).resolve()}")
+    print(f"[INFO] CSV path: {Path(args.csv_path).resolve()}")
     print(f"[INFO] Output root: {output_root}")
     print(f"[INFO] Structured output dir: {output_dir}")
+    print(f"[INFO] Interval seconds: {interval_sec}")
+    print(f"[INFO] Max frames: {args.max_frames}")
 
     output_path = choose_resume_or_new(output_dir, run_config)
     print(f"[INFO] Output file: {output_path}")
@@ -406,14 +574,13 @@ def main():
     if existing is None:
         payload = {
             "run_config": run_config,
-            "frame_analysis_summary": summary,
             "results": [],
         }
     else:
         payload = existing
         print("\n[INFO] Resuming existing run with config:")
         for k, v in payload["run_config"].items():
-            if k in {"task_type", "model", "seed", "temperature", "interval_sec"}:
+            if k in {"task_type", "model", "seed", "temperature", "interval_sec", "max_frames"}:
                 print(f"- {k}: {v}")
 
     result_map = {}
@@ -455,7 +622,16 @@ def main():
         ground_truth_choice = task_payload["ground_truth_choice"]
         presented_choices = task_payload["presented_choices"]
 
-        image_paths = sample_index_to_paths.get(i, [])
+        image_paths = []
+        frame_meta = None
+        if "vlm" in model_family:
+            image_paths, frame_meta = build_image_paths_for_sample(
+                sample=sample,
+                images_dir=args.images_dir,
+                video_to_fps=video_to_fps,
+                interval_sec=interval_sec,
+                max_frames=max(1, args.max_frames),
+            )
 
         response, error_payload = run_model(
             model_name=args.model,
@@ -478,10 +654,12 @@ def main():
             "seed": args.seed,
             "temperature": args.temperature,
             "interval_sec": interval_sec,
+            "max_frames": args.max_frames,
             "prompt": prompt,
             "transcript_used": transcript,
             "image_paths_used": image_paths if "vlm" in model_family else [],
             "num_frames_used": len(image_paths) if "vlm" in model_family else 0,
+            "frame_meta": frame_meta,
             "presented_choices": presented_choices,
             "ground_truth_label": ground_truth_label,
             "ground_truth_choice": ground_truth_choice,

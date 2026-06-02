@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export OPENAI_API_KEY="$(cat /mnt/ssd1/SHREC/openai_token)"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
+
+if [[ -z "${CUDA_VISIBLE_DEVICES:-}" ]] && command -v nvidia-smi >/dev/null 2>&1; then
+  CUDA_VISIBLE_DEVICES="$(nvidia-smi --query-gpu=index --format=csv,noheader | paste -sd, -)"
+  export CUDA_VISIBLE_DEVICES
+fi
+echo "[INFO] CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-<unset>}"
 
 DATA_PATH="${DATA_PATH:-/mnt/ssd1/SHREC/SHREC/clean_preprocess/clean_preprocess/output_datasets}"
 OUTPUT_DIR="${OUTPUT_DIR:-/mnt/ssd1/SHREC/SHREC/clean_evaluation/output}"
@@ -51,24 +58,13 @@ resolve_dataset_paths() {
   esac
 }
 
-if command -v nvidia-smi >/dev/null 2>&1; then
-  CUDA_VISIBLE_DEVICES="$(nvidia-smi --query-gpu=index --format=csv,noheader | paste -sd, -)"
-  export CUDA_VISIBLE_DEVICES
-  echo "[INFO] Using CUDA_VISIBLE_DEVICES=$CUDA_VISIBLE_DEVICES"
-else
-  echo "[WARN] nvidia-smi not found; leaving CUDA_VISIBLE_DEVICES unchanged"
-fi
-
-echo "[STEP] Checking vlmeval + InternVL import once before batch run..."
+echo "[STEP] Checking OpenAI package..."
 python3 - <<'PY'
 try:
-    from vlmeval.config import supported_VLM
-    print("[OK] imported supported_VLM from vlmeval.config")
-    keys = list(supported_VLM.keys())
-    preview = [k for k in keys if "InternVL" in k or "internvl" in k]
-    print("[INFO] Available keys preview:", preview if preview else keys[:20])
+    import openai
+    print("[OK] openai import succeeded")
 except Exception as e:
-    print("[ERROR] Failed to import vlmeval or supported_VLM:", e)
+    print("[ERROR] openai import failed:", e)
     raise
 PY
 
@@ -78,9 +74,10 @@ for dataset in "${DATASETS[@]}"; do
   for task_name in "${TASK_NAMES[@]}"; do
     TASK_TYPE="${DATA_PREFIX}_${task_name}.pickle"
 
-    LOG_FILE="${LOG_DIR}/internvl_${dataset}_${task_name}_$(date +"%Y%m%d_%H%M%S").log"
+    LOG_FILE="${LOG_DIR}/gpt4omini_lang_${dataset}_${task_name}_$(date +"%Y%m%d_%H%M%S").log"
 
     {
+      echo "[INFO] model=gpt-4o-mini"
       echo "[INFO] dataset=$dataset"
       echo "[INFO] task_name=$task_name"
       echo "[INFO] task_type=$TASK_TYPE"
@@ -100,16 +97,11 @@ for dataset in "${DATASETS[@]}"; do
       continue
     fi
 
-    if [[ ! -d "$IMAGES_DIR" ]]; then
-      echo "[WARN] Missing image directory, skipping: $IMAGES_DIR" | tee -a "$LOG_FILE"
-      continue
-    fi
-
-    echo "[STEP] Running InternVL eval for dataset=$dataset task=$task_name" | tee -a "$LOG_FILE"
+    echo "[STEP] Running GPT-4o-mini language-only eval for dataset=$dataset task=$task_name" | tee -a "$LOG_FILE"
 
     python3 ./clean_evaluation/run_eval.py \
       --task_type "$TASK_TYPE" \
-      --model internvl \
+      --model gpt-4o-mini \
       --data_path "$DATA_PATH" \
       --images_dir "$IMAGES_DIR" \
       --csv_path "$CSV_PATH" \
@@ -122,4 +114,4 @@ for dataset in "${DATASETS[@]}"; do
   done
 done
 
-echo "[DONE] All dataset/task combinations finished."
+echo "[DONE] All GPT-4o-mini language-only runs finished."

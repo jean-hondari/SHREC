@@ -87,8 +87,9 @@ def call_internvl_with_vlmeval(prompt: str, transcript: str, image_paths: List[s
 
 
     model = get_internvl_model()
-    query = prompt
-    return model.generate(image_paths, query)
+    packed_inputs = list(image_paths)
+    packed_inputs.append(prompt)
+    return model.generate(packed_inputs)
 
 
 def call_llama(prompt: str, transcript: str) -> str:
